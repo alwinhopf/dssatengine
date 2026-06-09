@@ -1,0 +1,29 @@
+Package: dssatengine
+Type: Package
+Title: Canonical Gridded Crop Modeling Engine for DSSAT
+Version: 0.1.0
+Authors@R: person("Alwin", "Hopf", email = "alwinhopf@gmail.com", role = c("aut", "cre"))
+Description: Modular soil and weather download, folder building, and execution logic 
+    for running the DSSAT crop model spatially/on a grid. Shared across multiple projects.
+License: MIT
+Encoding: UTF-8
+Imports:
+    sf,
+    dplyr,
+    tidyr,
+    stringr,
+    lubridate,
+    foreach,
+    doParallel,
+    pbapply,
+    DSSAT,
+    R.utils,
+    processx,
+    terra,
+    ncdf4,
+    httr,
+    jsonlite,
+    readr,
+    soilDB,
+    dssatutils
+RoxygenNote: 7.3.1

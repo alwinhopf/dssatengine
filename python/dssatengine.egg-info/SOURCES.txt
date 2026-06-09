@@ -1,0 +1,9 @@
+README.md
+pyproject.toml
+python/dssatengine/__init__.py
+python/dssatengine/engine.py
+python/dssatengine.egg-info/PKG-INFO
+python/dssatengine.egg-info/SOURCES.txt
+python/dssatengine.egg-info/dependency_links.txt
+python/dssatengine.egg-info/requires.txt
+python/dssatengine.egg-info/top_level.txt
