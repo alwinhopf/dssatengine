@@ -342,7 +342,17 @@ def _merge_supplemental(point_dir: str, master_runs: pd.DataFrame) -> pd.DataFra
     return mr
 
 def _build_result_rows(ID: str, summary: pd.DataFrame,
-                       mr: pd.DataFrame) -> pd.DataFrame:
+                       mr: pd.DataFrame,
+                       is_sequence: bool = False) -> pd.DataFrame:
+    """Assemble the result DataFrame from a summary table and the augmented
+    master_runs table (mr). Shared by experiment and sequence mode.
+
+    *is_sequence* gates the mode-A treatment-labeling workaround: in sequence
+    (mode-Q) runs each call handles a single treatment, so TRNO is legitimately
+    constant across the sequence's runs and must be preserved as-is. The RUNNO
+    override applies only to experiment (mode-A) runs, where DSSAT reports
+    TRNO==1 for every treatment.
+    """
     mr_idx = mr.set_index("RUNNO") if "RUNNO" in mr.columns else mr
 
     def _reindex_col(col_name: str) -> np.ndarray:
@@ -362,12 +372,19 @@ def _build_result_rows(ID: str, summary: pd.DataFrame,
     somct_delta = somct_end - somct_start
 
     _trno = summary.get("TRNO")
-    _trno_all_one = (
-        _trno is not None
-        and hasattr(_trno, "nunique")
-        and _trno.nunique() == 1
-    )
-    treatment_col = summary["RUNNO"] if _trno_all_one else _trno
+    if is_sequence:
+        # Sequence (mode-Q): each call handles a single treatment, so TRNO is
+        # legitimately constant across the sequence and must be preserved as-is.
+        treatment_col = _trno if _trno is not None else summary["RUNNO"]
+    else:
+        # Experiment (mode-A): DSSAT reports TRNO==1 for every treatment, so use
+        # RUNNO (which increments 1..N) as the treatment identifier.
+        _trno_all_one = (
+            _trno is not None
+            and hasattr(_trno, "nunique")
+            and _trno.nunique() == 1
+        )
+        treatment_col = summary["RUNNO"] if _trno_all_one else _trno
 
     return pd.DataFrame({
         "point_id":                               ID,
@@ -489,6 +506,9 @@ def _run_simulation(ID: str,
 
                 summary = _read_csv_safe(os.path.join(point_dir, "summary.csv"))
                 if summary is None or summary.empty:
+                    print(f"--- WARNING: ID {ID} trt {trt}: no summary.csv produced "
+                          f"by DSSAT (sequence run failed); emitting empty placeholder "
+                          f"rows. Check {point_dir}/ERROR.OUT and the .SQX template. ---")
                     n_seq   = sequence_end - sequence_start + 1
                     summary = pd.DataFrame({
                         "RUNNO":   range(1, n_seq + 1),
@@ -508,7 +528,8 @@ def _run_simulation(ID: str,
 
                 master_runs = summary[["RUNNO"]].copy()
                 master_runs = _merge_supplemental(point_dir, master_runs)
-                trt_results = _build_result_rows(ID, summary, master_runs)
+                trt_results = _build_result_rows(ID, summary, master_runs,
+                                                 is_sequence=True)
                 all_seq_results.append(trt_results)
 
             if all_seq_results:
