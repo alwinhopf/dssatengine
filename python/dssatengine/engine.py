@@ -241,7 +241,11 @@ def _write_dssbatch(experiment_file: str, trtno_list: list,
     fname = os.path.basename(experiment_file)
     lines = []
     for trt in trtno_list:
-        filex_padded = f" {fname:<93s}"
+        # FileX must start at column 1 (no leading space): CSM.for computes
+        # END_POS=INDEX(line, BLANK) then reads FILEX=line(END_POS-12:END_POS-1).
+        # A leading space puts the first blank at column 1 -> negative substring
+        # index -> "Substring out of bounds" crash in CSM.for.
+        filex_padded = f"{fname:<93s}"
         lines.append(f"{filex_padded}{trt:6d}  1  0  1  0")
 
     with open(batch_path, "w") as fh:
@@ -260,7 +264,9 @@ def _write_dssbatch_sequence(experiment_file: str, trt: int,
     )
     lines = []
     for sq in range(seq_start, seq_end + 1):
-        filex_padded = f" {fname:<93s}"
+        # FileX must start at column 1 (no leading space) — see _write_dssbatch.
+        # A leading space crashes CSM.for with "Substring out of bounds".
+        filex_padded = f"{fname:<93s}"
         lines.append(f"{filex_padded}{trt:6d}  1{sq:6d}  1  0")
 
     with open(batch_path, "w") as fh:

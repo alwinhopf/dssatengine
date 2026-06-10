@@ -45,8 +45,8 @@ the two languages agree on sequence-mode labeling.
 
 ## Consumers
 
-- [`DSSAT Gridded Run Tutorial`](../DSSAT%20Gridded%20Run%20Tutorial) — the engine's origin.
-- [`DSSAT SubField MILP Analysis`](../DSSAT%20SubField%20MILP%20Analysis) — sequence/rotation cover-crop runs.
+- [`DSSAT_Gridded_Run_Tutorial`](../DSSAT%20Gridded%20Run%20Tutorial) — the engine's origin.
+- [`DSSAT_SubField_MILP_Analysis`](../DSSAT%20SubField%20MILP%20Analysis) — sequence/rotation cover-crop runs.
 
 Both import the engine (`library(dssatengine)` / `from dssatengine import …`) instead of
 carrying a forked `dssat_main_pipeline`.
