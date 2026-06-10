@@ -17,3 +17,9 @@
 - Parallelized R and Python interfaces supporting spatial gridded runs.
 - Config-driven execution options, weather/soil switches, and multi-core resource settings.
 - Vectorized aggregation of results.
+
+### Fixed
+- `_write_dssbatch` / `_write_dssbatch_sequence` (Python): the FileX field no longer
+  carries a leading space, so the entry starts at column 1. A leading space made
+  CSM.for compute a negative substring index (`Substring out of bounds`) and crash on
+  sequence/batch runs.
