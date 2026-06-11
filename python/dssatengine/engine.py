@@ -3,6 +3,7 @@ import re
 import math
 import subprocess
 import platform
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 import numpy as np
@@ -440,6 +441,15 @@ def _run_simulation(ID: str,
     point_dir = os.path.join(dssat_run_dir, ID)
     os.makedirs(point_dir, exist_ok=True)
 
+    def log_run_error(message: str) -> None:
+        line = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ID {ID}: {message}"
+        try:
+            with open(os.path.join(point_dir, "_run_error.log"), "a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
+        except Exception:
+            pass
+        print(line)
+
     ext_map   = {"MZ": "MZX", "WH": "WHX", "SB": "SBX", "SC": "SCX",
                  "BA": "BAX", "SG": "SGX", "RI": "RIX"}
     ext       = ext_map.get(crop_extension, template_file_name.rsplit(".", 1)[-1])
@@ -476,21 +486,14 @@ def _run_simulation(ID: str,
 
             summary = _read_csv_safe(os.path.join(point_dir, "summary.csv"))
             if summary is None or summary.empty:
-                trts  = list(range(treatment_start, treatment_end + 1))
-                n_yr  = max(1, weather_end_year - weather_start_year)
-                summary = pd.DataFrame({
-                    "RUNNO":   range(1, len(trts) * n_yr + 1),
-                    "TRNO":    [t for t in trts for _ in range(n_yr)],
-                    "PYEAR":   [y for _ in trts
-                                  for y in range(weather_start_year, weather_end_year)],
-                    "CR": None, "LAT": None, "LONG": None, "WSTA": None,
-                    "SOIL_ID": None, "EXNAME": None, "TNAM": None,
-                    "PDAT": None, "EDAT": None, "HDAT": None, "HYEAR": None,
-                    "CWAM": None, "HWAM": None, "BWAH": None,
-                    "CO2EM": None, "N2OEM": None,
-                })
-            else:
-                summary["PYEAR"] = summary["PDAT"].astype(str).str[:4]
+                raise RuntimeError(
+                    "DSSAT produced no 'summary.csv'. The experiment file's "
+                    "OUTPUTS line must end in FMOPT = 'C' (CSV output); 'A' "
+                    "writes Summary.OUT instead. Also check ERROR.OUT / "
+                    "WARNING.OUT in this folder."
+                )
+
+            summary["PYEAR"] = summary["PDAT"].astype(str).str[:4]
 
             master_runs = summary[["RUNNO"]].copy()
             master_runs = _merge_supplemental(point_dir, master_runs)
@@ -512,25 +515,15 @@ def _run_simulation(ID: str,
 
                 summary = _read_csv_safe(os.path.join(point_dir, "summary.csv"))
                 if summary is None or summary.empty:
-                    print(f"--- WARNING: ID {ID} trt {trt}: no summary.csv produced "
-                          f"by DSSAT (sequence run failed); emitting empty placeholder "
-                          f"rows. Check {point_dir}/ERROR.OUT and the .SQX template. ---")
-                    n_seq   = sequence_end - sequence_start + 1
-                    summary = pd.DataFrame({
-                        "RUNNO":   range(1, n_seq + 1),
-                        "TRNO":    trt,
-                        "PYEAR":   [y for y in range(weather_start_year,
-                                                      weather_start_year + n_seq)],
-                        "CR": None, "LAT": None, "LONG": None, "WSTA": None,
-                        "SOIL_ID": None, "EXNAME": None, "TNAM": None,
-                        "PDAT": None, "EDAT": None, "HDAT": None, "HYEAR": None,
-                        "CWAM": None, "HWAM": None, "BWAH": None,
-                        "CO2EM": None, "N2OEM": None,
-                    })
-                else:
-                    summary["PYEAR"] = summary["PDAT"].astype(str).str[:4]
-                    if "TRNO" not in summary.columns or summary["TRNO"].isna().all():
-                        summary["TRNO"] = trt
+                    log_run_error(
+                        f"trt {trt}: DSSAT produced no 'summary.csv' "
+                        "(FMOPT must be 'C'; see ERROR.OUT / WARNING.OUT)."
+                    )
+                    continue
+
+                summary["PYEAR"] = summary["PDAT"].astype(str).str[:4]
+                if "TRNO" not in summary.columns or summary["TRNO"].isna().all():
+                    summary["TRNO"] = trt
 
                 master_runs = summary[["RUNNO"]].copy()
                 master_runs = _merge_supplemental(point_dir, master_runs)
@@ -553,7 +546,7 @@ def _run_simulation(ID: str,
         return results
 
     except Exception as exc:
-        print(f"--- FATAL ERROR processing ID {ID}: {exc} ---")
+        log_run_error(f"FATAL: {exc}")
         return None
 
 def _run_one_point(args: dict) -> Optional[pd.DataFrame]:
