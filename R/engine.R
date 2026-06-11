@@ -305,7 +305,17 @@ run_simulation <- function(ID,
   orig_wd <- getwd()
   tryCatch({ setwd(point_dir) }, error = function(e) return(NULL))
   on.exit(setwd(orig_wd))
-  
+
+  # Per-point error log. message() from parLapply workers is NEVER shown in the
+  # parent console, so a failing point would otherwise vanish silently (no
+  # results_<ID>.csv, no error). Writing into the point folder survives worker
+  # isolation and gives a durable breadcrumb to diagnose from.
+  log_run_error <- function(msg) {
+    line <- sprintf("[%s] ID %s: %s", format(Sys.time()), ID, msg)
+    try(cat(line, "\n", file = "_run_error.log", append = TRUE), silent = TRUE)
+    message(line)  # still emit for interactive / sequential runs
+  }
+
   template_ext <- tools::file_ext(template_file_name)
   experiment_file <- list.files(pattern = paste0("\\.", template_ext, "$"))[1]
   if (is.na(experiment_file)) {
@@ -348,7 +358,12 @@ run_simulation <- function(ID,
       batch_file_path <- file.path(getwd(), 'DSSBatch.V48')
       DSSAT::write_dssbatch(x = experiment_file, trtno = treatment_start:treatment_end, file_name = batch_file_path)
       DSSAT::run_dssat()
-      
+
+      if (!file.exists('summary.csv')) {
+        stop("DSSAT produced no 'summary.csv'. The experiment file's OUTPUTS line ",
+             "must end in FMOPT = 'C' (CSV output); 'A' writes Summary.OUT instead. ",
+             "Also check ERROR.OUT / WARNING.OUT in this folder.", call. = FALSE)
+      }
       summary <- suppressWarnings(readr::read_csv('summary.csv', show_col_types = FALSE))
       
       if (is.null(summary) || nrow(summary) == 0) {
@@ -411,8 +426,12 @@ run_simulation <- function(ID,
         batch_data <- dplyr::tibble(FILEX = experiment_file, TRTNO = rep(trt, n_seq), RP = 1, SQ = seq_vec, OP = 1, CO = 0)
         DSSAT::write_dssbatch(batch_data)
         DSSAT::run_dssat(run_mode = "Q", suppress_output = TRUE)
+        if (!file.exists('summary.csv')) {
+          log_run_error(sprintf("trt %d: DSSAT produced no 'summary.csv' (FMOPT must be 'C'; see ERROR.OUT).", trt))
+          next
+        }
         summary <- suppressWarnings(readr::read_csv('summary.csv', show_col_types = FALSE))
-        
+
         if (!is.null(summary) && nrow(summary) > 0) {
           summary$PYEAR <- substr(summary$PDAT, 1, 4)
           master_runs <- dplyr::tibble(RUNNO = summary$RUNNO)
@@ -474,7 +493,7 @@ run_simulation <- function(ID,
     return(results) 
     
   }, error = function(e) {
-    message(sprintf("--- FATAL ERROR processing ID %s: %s ---", ID, conditionMessage(e)))
+    log_run_error(sprintf("FATAL: %s", conditionMessage(e)))
     return(NULL)
   })
 }
