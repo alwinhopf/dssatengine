@@ -316,6 +316,28 @@ run_simulation <- function(ID,
     message(line)  # still emit for interactive / sequential runs
   }
 
+  run_dssat_logged <- function(run_mode = "B", batch_file = "DSSBatch.V48") {
+    out_file <- sprintf("dssat_%s_stdout_stderr.log", run_mode)
+    output <- tryCatch(
+      withCallingHandlers(
+        system2(dssat_exe_path, args = c(run_mode, batch_file), stdout = TRUE, stderr = TRUE),
+        warning = function(w) invokeRestart("muffleWarning")
+      ),
+      error = function(e) structure(conditionMessage(e), status = 1L)
+    )
+    status <- attr(output, "status")
+    if (is.null(status)) status <- 0L
+    if (length(output)) {
+      try(cat(paste(output, collapse = "\n"), "\n", file = out_file, append = TRUE), silent = TRUE)
+    }
+    if (!identical(as.integer(status), 0L)) {
+      tail_msg <- if (length(output)) paste(tail(output, 12), collapse = " | ") else "<no stdout/stderr captured>"
+      stop(sprintf("DSSAT exited with status %s in mode %s using %s. Log: %s. Tail: %s",
+                   status, run_mode, batch_file, out_file, tail_msg), call. = FALSE)
+    }
+    invisible(output)
+  }
+
   template_ext <- tools::file_ext(template_file_name)
   experiment_file <- list.files(pattern = paste0("\\.", template_ext, "$"))[1]
   if (is.na(experiment_file)) {
@@ -357,12 +379,15 @@ run_simulation <- function(ID,
     if (run_mode == "experiment") {
       batch_file_path <- file.path(getwd(), 'DSSBatch.V48')
       DSSAT::write_dssbatch(x = experiment_file, trtno = treatment_start:treatment_end, file_name = batch_file_path)
-      DSSAT::run_dssat()
+      run_dssat_logged("B", basename(batch_file_path))
 
       if (!file.exists('summary.csv')) {
-        stop("DSSAT produced no 'summary.csv'. The experiment file's OUTPUTS line ",
-             "must end in FMOPT = 'C' (CSV output); 'A' writes Summary.OUT instead. ",
-             "Also check ERROR.OUT / WARNING.OUT in this folder.", call. = FALSE)
+        has_summary_out <- file.exists("Summary.OUT")
+        stop("DSSAT completed but produced no 'summary.csv'. ",
+             if (has_summary_out) "Summary.OUT exists, so the FileX may still be configured for ASCII output. " else "",
+             "For CSV parsing, the experiment file's OUTPUTS line must end in FMOPT = 'C'. ",
+             "Also check ERROR.OUT, WARNING.OUT, INFO.OUT, and dssat_B_stdout_stderr.log in this folder.",
+             call. = FALSE)
       }
       summary <- suppressWarnings(readr::read_csv('summary.csv', show_col_types = FALSE))
       
@@ -425,9 +450,9 @@ run_simulation <- function(ID,
         n_seq <- length(seq_vec)
         batch_data <- dplyr::tibble(FILEX = experiment_file, TRTNO = rep(trt, n_seq), RP = 1, SQ = seq_vec, OP = 1, CO = 0)
         DSSAT::write_dssbatch(batch_data)
-        DSSAT::run_dssat(run_mode = "Q", suppress_output = TRUE)
+        run_dssat_logged("Q", "DSSBatch.V48")
         if (!file.exists('summary.csv')) {
-          log_run_error(sprintf("trt %d: DSSAT produced no 'summary.csv' (FMOPT must be 'C'; see ERROR.OUT).", trt))
+          log_run_error(sprintf("trt %d: DSSAT completed but produced no 'summary.csv' (FMOPT must be 'C'; see ERROR.OUT, WARNING.OUT, INFO.OUT, dssat_Q_stdout_stderr.log).", trt))
           next
         }
         summary <- suppressWarnings(readr::read_csv('summary.csv', show_col_types = FALSE))
