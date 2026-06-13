@@ -509,13 +509,17 @@ run_simulation <- function(ID,
     }
     
     if (nrow(results) > 0) readr::write_csv(results, paste0("results_", ID, ".csv"), na = "")
-    
-    if (cleanup_run_folders) {
-      setwd("..")
-      unlink(ID, recursive = TRUE)
-    }
-    
-    return(results) 
+
+    # NOTE: run-folder cleanup is intentionally NOT done here. The pipelines
+    # build the combined summary CSV by re-reading each point's results_<ID>.csv
+    # from disk AFTER all points finish, so deleting the folder now would race
+    # the combine step and yield an empty summary. The `cleanup_run_folders`
+    # argument is kept for backward compatibility but is a no-op; deletion is
+    # handled by the calling pipeline once the combined CSV has been written
+    # (see dssat_main_pipeline.R / .py). This also matches the Python engine,
+    # whose per-point worker never deletes its own folder.
+
+    return(results)
     
   }, error = function(e) {
     log_run_error(sprintf("FATAL: %s", conditionMessage(e)))
