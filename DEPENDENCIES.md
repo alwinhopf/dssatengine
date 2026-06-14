@@ -4,7 +4,7 @@ This file records **which version of each shared dependency every repo actually 
 so results are reproducible and upgrades are deliberate. Re-verify whenever a `dssatutils`
 tag is bumped or a consumer is updated.
 
-> **Last verified:** 2026-06-13 (by inspection of `requirements.txt`, `environment.yml`, `config.R`,
+> **Last verified:** 2026-06-14 (by inspection of `requirements.txt`, `environment.yml`, `config.R`,
 > `pyproject.toml`, `DESCRIPTION`).
 
 ## Shared dependencies
@@ -22,12 +22,12 @@ tag is bumped or a consumer is updated.
 |---|---|---|---|
 | DSSAT_Gridded_Run_Tutorial | Python | `environment.yml` git URL | `dssatutils@v0.1.0`, `dssatengine@v0.1.0` |
 | DSSAT_Gridded_Run_Tutorial | R | `setup_renv.R` / `renv.lock` | GitHub package ref recorded by `renv` |
-| DSSAT_SubField_MILP_Analysis | Python | `requirements.txt` git URL | `dssatutils@v0.1.0`, `dssatengine@v0.1.0` |
+| DSSAT-SubField-MILP-Analysis | Python | `requirements.txt` git URL | `dssatutils@v0.1.0`, `dssatengine@v0.1.0` |
 | DSSAT_ML_Phenology_Prediction | R | `config.R` -> `DSSATUTILS_PATH` / `remotes::install_git` | `@v0.1.0` fallback |
 | Bioenergy_Model_Input_Comparison | Python + R | via gridded engine / local sibling fallback | follows gridded engine pins |
 | dssat_lca_tea | — | **does not import `dssatutils`** — consumes DSSAT output CSVs | n/a |
-| DSSAT_Calibration | — | **does not use `dssatutils`** — own DSSAT wrapper via `DSSAT`/`CroptimizR` | n/a |
-| DSSAT_acceleration | Python | imports `dssatutils` as read-only dependency | (pin per `ACCELERATION_PLAN.md`) |
+| dssatcalibrator | — | **does not use `dssatutils`/`dssatengine`** — own config-driven DSSAT wrapper (`config_*.yaml`) | n/a |
+| pythia | — | independent third-party DSSAT tool (not a consumer of the shared layers) | n/a |
 
 ## Pinning policy
 

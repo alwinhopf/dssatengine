@@ -42,7 +42,7 @@ New repositories use **`snake_case`** with no spaces (e.g. `dssat_lca_tea`,
 (`DSSAT_Gridded_Run_Tutorial` → `dssat_gridded_run_tutorial`, etc.) is deferred to a
 deliberate, verified migration because:
 
-- Cross-repo references exist by path (e.g. `DSSAT_acceleration/*.py` references
+- Cross-repo references exist by path (e.g. consumer scripts reference
   `../DSSAT_Gridded_Run_Tutorial/`; `dssat_lca_tea/dssat_to_lca.{py,R}`; the HPC SLURM
   scripts; `dssatutils/migrate/*.sh`). All would need simultaneous updating.
 - The repos are independent git checkouts with their own remotes, RStudio projects, and
@@ -75,8 +75,8 @@ blind.
 ### P1 — Extract the gridded engine into a versioned package ✅ DONE
 The canonical engine was extracted into the **`dssatengine`** package (R + Python,
 v0.1.0), exactly as `dssatutils` was. `DSSAT_Gridded_Run_Tutorial` and
-`DSSAT_SubField_MILP_Analysis` now import it as thin wrappers (zero local engine defs);
-`Bioenergy` references it via `ENGINE_DIR`; `DSSAT_acceleration` uses it transitively.
+`DSSAT-SubField-MILP-Analysis` now import it as thin wrappers (zero local engine defs);
+`Bioenergy` references it via `ENGINE_DIR`.
 `dssat_main_pipeline.{R,py}` is no longer hand-copied, so a fix lands once and reaches
 every consumer (e.g. the leading-space `DSSBatch` fix). **Remaining:** version-tag the
 package so consumers can pin it (currently imported from source / editable install).
@@ -90,11 +90,10 @@ local. **Risk:** medium — pipelines read templates by relative path.
 ### P3 — Promote shared output parsing
 The DSSAT output parser (keep `Summary.OUT`, merge to one CSV) is reimplemented per fork.
 **Plan:** fold it into the `dssatengine` package (P1) so the I/O-suppression work in
-`DSSAT_acceleration` is shared, not re-derived. **Risk:** medium — couples to P1.
+the acceleration experiments is shared, not re-derived. **Risk:** medium — couples to P1.
 
-### P4 — Scaffold or retire `DSSAT_LAI_Assimilation`
-Currently has a README scaffold only (added). Either build it out or remove it once a
-decision is made.
+### P4 — `DSSAT_LAI_Assimilation` removed ✅
+The empty placeholder repo is no longer in the workspace checkout; no action remaining.
 
 **Recommended order:** P4 (done) → P2 → P1 → P3, doing one consumer repo at a time with a
 verification run between each step.
