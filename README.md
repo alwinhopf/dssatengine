@@ -1,5 +1,7 @@
 # DSSAT Crop-Modeling Workspace
 
+> **AI agents & maintainers:** read [`../AGENTS.md`](../AGENTS.md) before editing any repo here.
+
 This directory is a collection of independent git repositories that together form a
 **DSSAT (Decision Support System for Agrotechnology Transfer) crop-modeling stack** —
 a compiled crop model, a shared data-download library, a reusable gridded-simulation
