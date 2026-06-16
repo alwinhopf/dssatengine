@@ -70,13 +70,33 @@ To guarantee that crop modeling workflows execute correctly and deterministicall
 > [!NOTE]
 > **Pythia Exclusion:** The third-party repository `pythia` is explicitly excluded from these standards as it is treated as a read-only vendored dependency.
 
+### Canonical environment variables
+
+These are the workspace-standard variable names. Use them in config files and
+documentation; never hardcode the paths they represent.
+
+| Variable | Purpose |
+|---|---|
+| `DSSAT_EXE` | Path to the compiled `dscsm048` / `dscsm048.exe` binary. |
+| `DSSAT_DIR` | Root of the DSSAT48 install (databases, crop coefficients). |
+| `ENGINE_DIR` | Path to the `dssatengine` package checkout (sibling-path consumers). |
+| `MILP_MODEL_DIR` | Path to the SubField MILP model directory. |
+| `DSSATUTILS_PATH` | Path to the `dssatutils` checkout (R `remotes::install_git` fallback). |
+
 ### A. Path Handling & Operations
 1. **Never Hardcode Separators:** Do not construct paths using string concatenation or hardcoded slashes (like `\` or `/`).
-   - **Python:** Always construct paths using `pathlib.Path` objects and the `/` operator.
+   - **Python:** Prefer `pathlib.Path` objects and the `/` operator for new code. `os.path.join()` / `os.path.exists()` are acceptable alternatives — the key rule is never to concatenate path strings manually or hardcode separators.
      ```python
-     # Good
+     # Good (preferred)
      from pathlib import Path
      data_path = Path("data") / "weather" / "station.WTH"
+
+     # Acceptable
+     import os
+     data_path = os.path.join("data", "weather", "station.WTH")
+
+     # Bad — hardcoded separator
+     data_path = "data\\weather\\station.WTH"
      ```
    - **R:** Use `file.path()` or the `fs` package. Always use forward slashes `/` for literal path components in R code (even on Windows).
      ```R
