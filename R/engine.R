@@ -20,6 +20,12 @@ LAT_COLUMN <- "LAT"
 LONG_COLUMN <- "LONG"
 POINT_ID_COLUMN <- "ID"
 
+append_utf8 <- function(path, text) {
+  con <- file(path, open = "a", encoding = "UTF-8")
+  on.exit(close(con), add = TRUE)
+  writeLines(text, con = con)
+}
+
 #' Create a regular grid of points inside boundary_shape
 #'
 #' @export
@@ -90,7 +96,7 @@ extend_weather_repeat_single_ignore_partial <- function(f,
                                                         ref_end_year,
                                                         target_end_year,
                                                         verbose = TRUE) {
-  lines <- readLines(f, warn = FALSE)
+  lines <- readLines(f, warn = FALSE, encoding = "UTF-8")
   data_start_idx <- grep("^\\s*[0-9]+", lines)[1]
   if (is.na(data_start_idx)) return(NULL)
   header_lines <- lines[1:(data_start_idx - 1)]
@@ -275,8 +281,59 @@ extend_weather_repeat_single_ignore_partial <- function(f,
     formatted_body <- date_col_str
   }
   
-  writeLines(c(header_lines, formatted_body), f)
+  con <- file(f, open = "w", encoding = "UTF-8")
+  on.exit(close(con), add = TRUE)
+  writeLines(c(header_lines, formatted_body), con = con)
   return(TRUE)
+}
+
+#' Normalize a treatment selection into an ordered, deduplicated integer vector.
+#'
+#' Mirrors the Python `_normalize_treatment_list`. Accepts either a contiguous
+#' `treatment_start`..`treatment_end` range or an explicit (possibly
+#' non-contiguous) `treatment_list`. The legacy `treatments` argument is
+#' deprecated and may not be combined with `treatment_list`.
+#'
+#' @export
+normalize_treatment_list <- function(treatment_start, treatment_end,
+                                     treatment_list = NULL,
+                                     treatments = NULL) {
+  has_list <- !is.null(treatment_list) && length(treatment_list) > 0
+  has_legacy <- !is.null(treatments) && length(treatments) > 0
+  if (has_list && has_legacy) {
+    stop("Use only one explicit treatment selector: 'treatment_list'. ",
+         "The legacy 'treatments' argument is ambiguous and is ignored by new configs.",
+         call. = FALSE)
+  }
+  if (has_legacy) {
+    warning("'treatments' is deprecated; use 'treatment_list' for explicit treatment IDs.",
+            call. = FALSE)
+    treatment_list <- treatments
+    has_list <- TRUE
+  }
+  if (has_list) {
+    trt_vec <- suppressWarnings(as.integer(unlist(treatment_list, use.names = FALSE)))
+  } else {
+    start <- suppressWarnings(as.integer(treatment_start)[1])
+    end <- suppressWarnings(as.integer(treatment_end)[1])
+    if (is.na(start) || is.na(end)) {
+      stop("treatment_start and treatment_end must be valid integers.", call. = FALSE)
+    }
+    if (end < start) {
+      stop(sprintf("treatment_end (%d) must be >= treatment_start (%d).", end, start),
+           call. = FALSE)
+    }
+    trt_vec <- seq.int(start, end)
+  }
+  trt_vec <- unique(trt_vec[!is.na(trt_vec)])
+  if (!length(trt_vec)) {
+    stop("No valid treatments selected. Set treatment_start/treatment_end or treatment_list.",
+         call. = FALSE)
+  }
+  if (any(trt_vec < 1L)) {
+    stop("Treatment IDs must be positive integers.", call. = FALSE)
+  }
+  trt_vec
 }
 
 #' Run DSSAT Simulation for a single point (R Implementation)
@@ -296,9 +353,11 @@ run_simulation <- function(ID,
                            weather_end_year,
                            dssat_exe_path,
                            cleanup_run_folders = FALSE,
-                           points_df = NULL) {
+                           points_df = NULL,
+                           treatment_list = NULL,
+                           treatments = NULL) {
   options(DSSAT.CSM = dssat_exe_path)
-  
+
   point_dir <- file.path(dssat_run_dir, ID)
   if (!dir.exists(point_dir)) dir.create(point_dir, recursive = TRUE)
   
@@ -312,9 +371,18 @@ run_simulation <- function(ID,
   # isolation and gives a durable breadcrumb to diagnose from.
   log_run_error <- function(msg) {
     line <- sprintf("[%s] ID %s: %s", format(Sys.time()), ID, msg)
-    try(cat(line, "\n", file = "_run_error.log", append = TRUE), silent = TRUE)
+    try(append_utf8("_run_error.log", line), silent = TRUE)
     message(line)  # still emit for interactive / sequential runs
   }
+
+  trt_vec <- tryCatch(
+    normalize_treatment_list(treatment_start, treatment_end, treatment_list, treatments),
+    error = function(e) {
+      log_run_error(sprintf("FATAL: %s", conditionMessage(e)))
+      integer(0)
+    }
+  )
+  if (!length(trt_vec)) return(NULL)
 
   run_dssat_logged <- function(run_mode = "B", batch_file = "DSSBatch.V48") {
     out_file <- sprintf("dssat_%s_stdout_stderr.log", run_mode)
@@ -328,7 +396,7 @@ run_simulation <- function(ID,
     status <- attr(output, "status")
     if (is.null(status)) status <- 0L
     if (length(output)) {
-      try(cat(paste(output, collapse = "\n"), "\n", file = out_file, append = TRUE), silent = TRUE)
+      try(append_utf8(out_file, paste(output, collapse = "\n")), silent = TRUE)
     }
     if (!identical(as.integer(status), 0L)) {
       tail_msg <- if (length(output)) paste(tail(output, 12), collapse = " | ") else "<no stdout/stderr captured>"
@@ -366,7 +434,9 @@ run_simulation <- function(ID,
   
   read_supp_file <- function(fname) {
     if (file.exists(fname)) {
-      d <- try(suppressWarnings(readr::read_csv(fname, show_col_types = FALSE)), silent = TRUE)
+      d <- try(suppressWarnings(readr::read_csv(fname, show_col_types = FALSE,
+                                                locale = readr::locale(encoding = "UTF-8"))),
+               silent = TRUE)
       if (inherits(d, "try-error") || is.null(d) || nrow(d) == 0) return(NULL)
       return(d)
     }
@@ -378,7 +448,7 @@ run_simulation <- function(ID,
     # MODE A: EXPERIMENT 
     if (run_mode == "experiment") {
       batch_file_path <- file.path(getwd(), 'DSSBatch.V48')
-      DSSAT::write_dssbatch(x = experiment_file, trtno = treatment_start:treatment_end, file_name = batch_file_path)
+      DSSAT::write_dssbatch(x = experiment_file, trtno = trt_vec, file_name = batch_file_path)
       run_dssat_logged("B", basename(batch_file_path))
 
       if (!file.exists('summary.csv')) {
@@ -389,10 +459,11 @@ run_simulation <- function(ID,
              "Also check ERROR.OUT, WARNING.OUT, INFO.OUT, and dssat_B_stdout_stderr.log in this folder.",
              call. = FALSE)
       }
-      summary <- suppressWarnings(readr::read_csv('summary.csv', show_col_types = FALSE))
+      summary <- suppressWarnings(readr::read_csv('summary.csv', show_col_types = FALSE,
+                                                  locale = readr::locale(encoding = "UTF-8")))
       
       if (is.null(summary) || nrow(summary) == 0) {
-        treatments_vec <- treatment_start:treatment_end
+        treatments_vec <- trt_vec
         n_years <- (weather_end_year - weather_start_year)
         n_runs <- length(treatments_vec) * n_years
         summary <- dplyr::tibble(
@@ -445,7 +516,7 @@ run_simulation <- function(ID,
       
       # MODE B: SEQUENCE 
     } else if (run_mode == "sequence") {
-      for (trt in treatment_start:treatment_end) {
+      for (trt in trt_vec) {
         seq_vec <- sequence_start:sequence_end
         n_seq <- length(seq_vec)
         batch_data <- dplyr::tibble(FILEX = experiment_file, TRTNO = rep(trt, n_seq), RP = 1, SQ = seq_vec, OP = 1, CO = 0)
@@ -455,7 +526,8 @@ run_simulation <- function(ID,
           log_run_error(sprintf("trt %d: DSSAT completed but produced no 'summary.csv' (FMOPT must be 'C'; see ERROR.OUT, WARNING.OUT, INFO.OUT, dssat_Q_stdout_stderr.log).", trt))
           next
         }
-        summary <- suppressWarnings(readr::read_csv('summary.csv', show_col_types = FALSE))
+        summary <- suppressWarnings(readr::read_csv('summary.csv', show_col_types = FALSE,
+                                                    locale = readr::locale(encoding = "UTF-8")))
 
         if (!is.null(summary) && nrow(summary) > 0) {
           summary$PYEAR <- substr(summary$PDAT, 1, 4)

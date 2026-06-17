@@ -4,7 +4,7 @@ This file records **which version of each shared dependency every repo actually 
 so results are reproducible and upgrades are deliberate. Re-verify whenever a `dssatutils`
 tag is bumped or a consumer is updated.
 
-> **Last verified:** 2026-06-14 (by inspection of `requirements.txt`, `environment.yml`, `config.R`,
+> **Last verified:** 2026-06-17 (by inspection of `requirements.txt`, `environment.yml`, `renv.lock`, `config.R`,
 > `pyproject.toml`, `DESCRIPTION`).
 
 ## Shared dependencies
@@ -13,16 +13,16 @@ tag is bumped or a consumer is updated.
 |---|---|---|
 | `DSSAT48/dscsm048` | Compiled binary | DSSAT-CSM v4.8 (install in `DSSAT48/`) |
 | `dssat-csm-os` | Fortran source | open-source DSSAT-CSM tree (separate checkout) |
-| `dssatutils` | R + Python package | `0.1.0` (`pyproject.toml` + `DESCRIPTION`) |
-| `dssatengine` | R + Python package | `0.1.0` (`pyproject.toml` + `DESCRIPTION`) |
+| `dssatutils` | R + Python package | `0.2.0` (`pyproject.toml` + `DESCRIPTION`) |
+| `dssatengine` | R + Python package | `0.2.0` (`pyproject.toml` + `DESCRIPTION`) |
 
 ## How each consumer pins `dssatutils`
 
 | Repo | Language | Pin mechanism | Pinned to |
 |---|---|---|---|
-| DSSAT_Gridded_Run_Tutorial | Python | `environment.yml` git URL | `dssatutils@v0.1.0`, `dssatengine@v0.1.0` |
-| DSSAT_Gridded_Run_Tutorial | R | `setup_renv.R` / `renv.lock` | GitHub package ref recorded by `renv` |
-| DSSAT-SubField-MILP-Analysis | Python | `requirements.txt` git URL | `dssatutils@v0.1.0`, `dssatengine@v0.1.0` |
+| DSSAT_Gridded_Run_Tutorial | Python | `environment.yml` git URL | `dssatutils@v0.2.0`, `dssatengine@v0.2.0` |
+| DSSAT_Gridded_Run_Tutorial | R | `setup_renv.R` / `renv.lock` | `dssatutils@v0.2.0`, `dssatengine@v0.2.0` |
+| DSSAT-SubField-MILP-Analysis | Python | `requirements.txt` git URL | `dssatutils@v0.2.0`, `dssatengine@v0.2.0` |
 | DSSAT_ML_Phenology_Prediction | R | `config.R` -> `DSSATUTILS_PATH` / `remotes::install_git` | `@v0.1.0` fallback |
 | Bioenergy_Model_Input_Comparison | Python + R | via gridded engine / local sibling fallback | follows gridded engine pins |
 | dssat_lca_tea | — | **does not import `dssatutils`** — consumes DSSAT output CSVs | n/a |
@@ -31,10 +31,13 @@ tag is bumped or a consumer is updated.
 
 ## Pinning policy
 
-Consumers should pin shared workspace packages to a release tag (`@v0.1.0`), not
+Consumers should pin shared workspace packages to a release tag (`@vX.Y.Z`), not
 `main` or an editable sibling path. Editable local installs are fine for development,
 but publication or handoff environments should record the tag or resolved commit in
 the relevant lockfile.
+
+After changing `dssatutils` or `dssatengine`, commit the shared-layer repo and push the
+matching tag before relying on a clean install from GitHub.
 
 ## Python library versions
 

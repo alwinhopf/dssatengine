@@ -1,39 +1,89 @@
-# DSSAT Crop-Modeling Workspace
+# dssatengine
 
-> **AI agents & maintainers:** read [`../AGENTS.md`](../AGENTS.md) before editing any repo here.
+> **AI agents & maintainers:** read [`../AGENTS.md`](../AGENTS.md) before editing this repo.
 
-This directory is a collection of independent git repositories that together form a
-**DSSAT (Decision Support System for Agrotechnology Transfer) crop-modeling stack** —
-a compiled crop model, a shared data-download library, a reusable gridded-simulation
-engine, and several specialized scientific applications built on top.
+The **canonical gridded DSSAT-CSM execution engine**, shipped as a dual-language package
+(R + Python) with matching function names. It is the extracted, version-pinned home for the
+points → weather + soil → FileX → run → parse workflow that consumer repos used to hand-copy.
 
-> **New here? Start with [`ARCHITECTURE.md`](../DSSAT_Gridded_Run_Tutorial/ARCHITECTURE.md)**
-> (the single canonical copy, kept in `DSSAT_Gridded_Run_Tutorial/`) for how the pieces
-> fit together, then [`DEPENDENCIES.md`](DEPENDENCIES.md) for what each repo pins, and
-> [`CONVENTIONS.md`](CONVENTIONS.md) for the shared coding/structure conventions.
+Consumers (`DSSAT_Gridded_Run_Tutorial`, `DSSAT-SubField-MILP-Analysis`, and — via
+`ENGINE_DIR` — `Bioenergy_Model_Input_Comparison`) import this package as a thin wrapper and
+carry **zero local engine definitions**, so a fix lands once and reaches every consumer.
 
-## Repository index
+> For how this package fits the wider workspace, see the canonical
+> [`ARCHITECTURE.md`](../DSSAT_Gridded_Run_Tutorial/ARCHITECTURE.md), the pins in
+> [`DEPENDENCIES.md`](DEPENDENCIES.md), and the shared rules in [`CONVENTIONS.md`](CONVENTIONS.md).
 
-| Repo | Tier | Language | Purpose |
-|---|---|---|---|
-| [`DSSAT48`](DSSAT48) | Foundation | Fortran (binary) | Compiled DSSAT-CSM v4.8 install: `dscsm048` binary, crop genotype files, code definitions. Read-only. |
-| [`dssat-csm-os`](dssat-csm-os) | Foundation | Fortran (source) | DSSAT-CSM open-source source tree (CMake build). The compilable counterpart to `DSSAT48`. |
-| [`dssatutils`](dssatutils) | Foundation | R + Python | Shared weather/soil download library → `.WTH` / `.SOL`. Private package, version-pinned by consumers. |
-| [`DSSAT_Gridded_Run_Tutorial`](DSSAT_Gridded_Run_Tutorial) | **Engine** | R + Python | Canonical gridded pipeline: points → weather+soil → FileX → run → parse. Includes the HPC MPI runner. |
-| [`Bioenergy_Model_Input_Comparison`](Bioenergy_Model_Input_Comparison) | Application | Python + R | Compares weather × soil data-source choices on carinata model outputs. |
-| [`dssat_lca_tea`](dssat_lca_tea) | Application | Python + R | LCA/TEA pipeline for camelina/carinata sustainable aviation fuel (consumes DSSAT yields). |
-| [`DSSAT_Calibration`](DSSAT_Calibration) | Application | R (`dssatcal`) | AgMIP-protocol genotype calibration with sensitivity screening + Bayesian UQ. |
-| [`DSSAT_ML_Phenology_Prediction`](DSSAT_ML_Phenology_Prediction) | Application | R | 22-model hybrid winter-wheat phenology pipeline (physics + assimilation + ML/DL). |
-| [`DSSAT_SubField_MILP_Analysis`](DSSAT_SubField_MILP_Analysis) | Application | Python + R | Subfield cover-crop bioenergy modeling + MILP placement optimization. |
-| [`DSSAT_acceleration`](DSSAT_acceleration) | Application | Python | Standalone performance pipeline (HRU dedup, output suppression, RAM-disk batching) for 30 m / continental scale. |
-| [`DSSAT_LAI_Assimilation`](DSSAT_LAI_Assimilation) | Application | — | Planned LAI remote-sensing data-assimilation study (scaffold only). |
+## What's inside
 
-## Conventions at a glance
+Both languages expose the same public surface (`R/engine.R`, `python/dssatengine/engine.py`):
 
-- Each subfolder is its **own git repository**; this top-level directory is not tracked.
-- `dssatutils`, `DSSAT48`, and `dssatengine` are the **read-only shared dependencies** —
-  consume, don't edit.
-- The gridded engine is now extracted into the shared **`dssatengine`** package; the
-  pipeline repos import it rather than carrying hand-copied forks.
-- See [`CONVENTIONS.md`](CONVENTIONS.md) for naming, R↔Python parity, `.gitignore`
-  hygiene, and the remaining consolidation roadmap (templates, shared parsing, parity).
+| Function (same name in R and Python) | Role |
+|---|---|
+| `create_grid_points` | Build a regular grid of points inside a boundary polygon (Albers EPSG:5070), write a point shapefile with `LAT`/`LONG`/`ID`. |
+| `load_existing_points` | Load a user point/polygon shapefile, reproject to EPSG:4326, normalize/regenerate the `ID` column. |
+| `extend_weather_repeat_single_ignore_partial` | Extend a `.WTH` file to a target end year by repeating a complete reference year (month-day matched, leap-aware), preserving `YYDDD`/`YYYYDDD` format. |
+| `run_simulation` | Build a per-point DSSAT run folder, write `DSSBatch.V48`, spawn `dscsm048`, parse `summary.csv` (+ `soilorg`/`soilni`/`soilwat` supplements) into a tidy results frame. |
+
+`run_simulation` supports two run modes — `experiment` (mode `A`) and `sequence` (mode `Q`) —
+and selects treatments either as a contiguous `treatment_start … treatment_end` range or as an
+explicit, possibly non-contiguous `treatment_list` (e.g. `[5, 1, 10]`, order-preserving and
+deduplicated). The legacy `treatments` argument is deprecated and may not be combined with
+`treatment_list`. The Python package additionally exposes the private `_run_one_point` /
+`_run_simulation` helpers used by the parallel drivers.
+
+## Behavior guarantees (cross-platform & failsafe)
+
+Per [`CONVENTIONS.md`](CONVENTIONS.md) §6, the engine:
+
+- **Captures and validates DSSAT exit codes.** A non-zero `dscsm048` exit raises with a log
+  path and a tail of stdout/stderr (R and Python); failures are never discarded silently.
+- **Writes the FileX field starting at column 1** in `DSSBatch.V48` — a leading space makes
+  `CSM.for` compute a negative substring index and crash (`Substring out of bounds`).
+- **Uses explicit UTF-8** for engine-owned text I/O and emits LF line endings.
+- **Resolves the executable dynamically** (`dscsm048` / `dscsm048.exe`) and never invokes a shell.
+
+## Install
+
+### Python
+```bash
+pip install "git+https://github.com/alwinhopf/dssatengine.git@v0.2.0"
+```
+or pin in `requirements.txt`:
+```
+dssatengine @ git+https://github.com/alwinhopf/dssatengine.git@v0.2.0
+```
+```python
+from dssatengine import create_grid_points, load_existing_points
+from dssatengine.engine import _run_one_point   # parallel-driver entry point
+```
+
+### R
+```r
+# install.packages("remotes")
+remotes::install_github("alwinhopf/dssatengine@v0.2.0")
+library(dssatengine)
+```
+
+## Versioning & pinning
+
+Semantic versioning with git tags. **Consumers always pin to a tag** (`@vX.Y.Z`), never
+`main`, so upstream changes never break a pipeline until the pin is deliberately bumped.
+After editing the engine, commit and **push the matching tag** before relying on a clean
+install from GitHub. The current release is `v0.2.0`; per-consumer pins are tracked in
+[`DEPENDENCIES.md`](DEPENDENCIES.md), and the change history is in [`NEWS.md`](NEWS.md).
+
+## Testing
+
+```bash
+# Python (fast, offline — no DSSAT binary needed)
+python -m pytest -q
+```
+```r
+# R
+testthat::test_dir("tests/testthat")
+```
+
+The fast tests cover treatment-list normalization and `DSSBatch.V48` writing in both
+languages (R/Python parity per [`CONVENTIONS.md`](CONVENTIONS.md) §3). End-to-end runs that
+spawn `dscsm048` require a DSSAT48 install and live in the consumer pipelines.

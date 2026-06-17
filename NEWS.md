@@ -10,6 +10,23 @@
 
 ---
 
+## [0.2.0] - 2026-06-17
+
+### Added
+- R and Python `run_simulation` support for explicit non-contiguous treatment IDs
+  through `treatment_list`, while preserving the contiguous `treatment_start` /
+  `treatment_end` range.
+- Fast Python tests for treatment-list normalization and DSSAT batch-file writing,
+  plus a mirrored R `testthat` parity test (`tests/testthat/`).
+- `normalize_treatment_list` is now an exported top-level R function (previously nested
+  inside `run_simulation`), mirroring Python's `_normalize_treatment_list` so both sides
+  are unit-testable.
+
+### Fixed
+- Python DSSAT execution now captures stdout/stderr, writes a per-run log, and raises
+  on non-zero DSSAT exit codes instead of silently discarding failures.
+- Engine-owned text I/O now uses explicit UTF-8 encoding in both R and Python.
+
 ## [0.1.0] - 2026-06-09
 
 ### Added

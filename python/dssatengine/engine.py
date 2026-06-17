@@ -3,6 +3,7 @@ import re
 import math
 import subprocess
 import platform
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -80,7 +81,7 @@ def load_existing_points(input_path: str, output_path: str) -> gpd.GeoDataFrame:
     return pts
 
 def _read_wth_file(path: str):
-    with open(path, "r") as fh:
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
         lines = fh.readlines()
 
     data_start = next(
@@ -222,7 +223,7 @@ def extend_weather_repeat_single_ignore_partial(
     rows_out = date_strs.str.rjust(7) + val_strs.apply(lambda r: "".join(r.values), axis=1)
     rows_out = rows_out.str.replace(" -99.0", "  -99")
 
-    with open(path, "w") as fh:
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write("\n".join(header_lines) + "\n")
         fh.write("\n".join(rows_out.tolist()) + "\n")
 
@@ -249,7 +250,7 @@ def _write_dssbatch(experiment_file: str, trtno_list: list,
         filex_padded = f"{fname:<93s}"
         lines.append(f"{filex_padded}{trt:6d}  1  0  1  0")
 
-    with open(batch_path, "w") as fh:
+    with open(batch_path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(header)
         fh.write("\n".join(lines) + "\n")
 
@@ -265,14 +266,61 @@ def _write_dssbatch_sequence(experiment_file: str, trt: int,
     )
     lines = []
     for sq in range(seq_start, seq_end + 1):
-        # FileX must start at column 1 (no leading space) — see _write_dssbatch.
+        # FileX must start at column 1 (no leading space); see _write_dssbatch.
         # A leading space crashes CSM.for with "Substring out of bounds".
         filex_padded = f"{fname:<93s}"
         lines.append(f"{filex_padded}{trt:6d}  1{sq:6d}  1  0")
 
-    with open(batch_path, "w") as fh:
+    with open(batch_path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(header)
         fh.write("\n".join(lines) + "\n")
+
+def _normalize_treatment_list(treatment_start: int,
+                              treatment_end: int,
+                              treatment_list: Optional[list] = None,
+                              treatments: Optional[list] = None) -> list[int]:
+    has_list = treatment_list is not None and len(treatment_list) > 0
+    has_legacy = treatments is not None and len(treatments) > 0
+    if has_list and has_legacy:
+        raise ValueError(
+            "Use only one explicit treatment selector: 'treatment_list'. "
+            "The legacy 'treatments' argument is ambiguous and is ignored by new configs."
+        )
+    explicit = treatment_list
+    if has_legacy:
+        explicit = treatments
+        has_list = True
+
+    if has_list:
+        raw_values = explicit
+    else:
+        start = int(treatment_start)
+        end = int(treatment_end)
+        if end < start:
+            raise ValueError(
+                f"treatment_end ({end}) must be >= treatment_start ({start})."
+            )
+        raw_values = range(start, end + 1)
+
+    seen = set()
+    trt_vec: list[int] = []
+    for value in raw_values:
+        try:
+            trt = int(value)
+        except (TypeError, ValueError):
+            continue
+        if trt < 1:
+            raise ValueError("Treatment IDs must be positive integers.")
+        if trt not in seen:
+            seen.add(trt)
+            trt_vec.append(trt)
+
+    if not trt_vec:
+        raise ValueError(
+            "No valid treatments selected. Set treatment_start/treatment_end "
+            "or treatment_list."
+        )
+    return trt_vec
 
 def _run_dssat(run_dir: str, exe: str, run_mode_flag: str = "A",
                filex: str = "") -> None:
@@ -280,15 +328,38 @@ def _run_dssat(run_dir: str, exe: str, run_mode_flag: str = "A",
         arg = "DSSBatch.V48"
     else:
         arg = filex if filex else "DSSBatch.V48"
-    cmd = [exe, run_mode_flag, arg]
-    subprocess.run(cmd, cwd=run_dir, check=False,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    exe_path = shutil.which(exe) if not os.path.isabs(exe) else exe
+    exe_path = exe_path or exe
+    if os.path.isabs(exe_path) and not os.path.exists(exe_path):
+        raise FileNotFoundError(f"DSSAT executable not found: {exe_path}")
+
+    cmd = [exe_path, run_mode_flag, arg]
+    result = subprocess.run(
+        cmd,
+        cwd=run_dir,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    log_path = os.path.join(run_dir, f"dssat_{run_mode_flag}_stdout_stderr.log")
+    output = "\n".join(part for part in (result.stdout, result.stderr) if part)
+    if output:
+        with open(log_path, "a", encoding="utf-8") as fh:
+            fh.write(output.rstrip() + "\n")
+    if result.returncode != 0:
+        tail = " | ".join(output.splitlines()[-12:]) if output else "<no stdout/stderr captured>"
+        raise RuntimeError(
+            f"DSSAT exited with status {result.returncode} in mode {run_mode_flag} "
+            f"using {arg}. Log: {log_path}. Tail: {tail}"
+        )
 
 def _read_csv_safe(path: str) -> Optional[pd.DataFrame]:
     if not os.path.exists(path):
         return None
     try:
-        df = pd.read_csv(path, index_col=False)
+        df = pd.read_csv(path, index_col=False, encoding="utf-8")
         return df if not df.empty else None
     except Exception:
         return None
@@ -437,7 +508,9 @@ def _run_simulation(ID: str,
                     sequence_end: int,
                     weather_start_year: int,
                     weather_end_year: int,
-                    dssat_exe_path: str) -> Optional[pd.DataFrame]:
+                    dssat_exe_path: str,
+                    treatment_list: Optional[list] = None,
+                    treatments: Optional[list] = None) -> Optional[pd.DataFrame]:
     point_dir = os.path.join(dssat_run_dir, ID)
     os.makedirs(point_dir, exist_ok=True)
 
@@ -474,14 +547,16 @@ def _run_simulation(ID: str,
     results = pd.DataFrame(results_template)
 
     try:
+        trt_vec = _normalize_treatment_list(
+            treatment_start, treatment_end, treatment_list, treatments
+        )
+
         # ------------------------------------------------------------------ #
         # EXPERIMENT MODE                                                      #
         # ------------------------------------------------------------------ #
         if run_mode == "experiment":
             batch_path = os.path.join(point_dir, "DSSBatch.V48")
-            _write_dssbatch(exp_path,
-                            list(range(treatment_start, treatment_end + 1)),
-                            batch_path, run_mode="experiment")
+            _write_dssbatch(exp_path, trt_vec, batch_path, run_mode="experiment")
             _run_dssat(point_dir, dssat_exe_path, "A", filex=exp_fname)
 
             summary = _read_csv_safe(os.path.join(point_dir, "summary.csv"))
@@ -506,7 +581,7 @@ def _run_simulation(ID: str,
         elif run_mode == "sequence":
             all_seq_results = []
 
-            for trt in range(treatment_start, treatment_end + 1):
+            for trt in trt_vec:
                 batch_path = os.path.join(point_dir, "DSSBatch.V48")
                 _write_dssbatch_sequence(exp_path, trt,
                                          sequence_start, sequence_end,
@@ -542,7 +617,7 @@ def _run_simulation(ID: str,
             except Exception:
                 pass
             out_csv = os.path.join(point_dir, f"results_{ID}.csv")
-            results.to_csv(out_csv, index=False, na_rep="")
+            results.to_csv(out_csv, index=False, na_rep="", encoding="utf-8")
         return results
 
     except Exception as exc:
@@ -560,5 +635,5 @@ def _run_one_point(args: dict) -> Optional[pd.DataFrame]:
         args["run_mode"], args["treatment_start"], args["treatment_end"],
         args["sequence_start"], args["sequence_end"],
         args["weather_start_year"], args["weather_end_year"],
-        args["dssat_exe_path"]
+        args["dssat_exe_path"], args.get("treatment_list"), args.get("treatments")
     )
