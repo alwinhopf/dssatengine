@@ -287,6 +287,54 @@ extend_weather_repeat_single_ignore_partial <- function(f,
   return(TRUE)
 }
 
+#' Write a DSSAT batch file for experiment-mode treatment runs
+#'
+#' Mirrors Python `write_dssbatch`. The FileX value intentionally starts in
+#' column 1; a leading blank can crash DSSAT's Fortran substring logic.
+#'
+#' @export
+write_dssbatch <- function(experiment_file, trtno_list,
+                           batch_path, run_mode = "experiment") {
+  mode_tag <- if (identical(run_mode, "experiment")) "EXPERIMENT" else "SEQUENCE"
+  header <- c(
+    sprintf("$BATCH(%s)", mode_tag),
+    "!",
+    "@ FILEX                                                                                        TRTNO RP SQ OP CO"
+  )
+  fname <- basename(experiment_file)
+  trt_vec <- as.integer(unlist(trtno_list, use.names = FALSE))
+  lines <- vapply(trt_vec, function(trt) {
+    sprintf("%-93s%6d  1  0  1  0", fname, trt)
+  }, character(1))
+
+  con <- file(batch_path, open = "w", encoding = "UTF-8")
+  on.exit(close(con), add = TRUE)
+  writeLines(c(header, lines), con = con)
+  invisible(batch_path)
+}
+
+#' Write a DSSAT batch file for sequence-mode runs
+#'
+#' @export
+write_dssbatch_sequence <- function(experiment_file, trt,
+                                    seq_start, seq_end,
+                                    batch_path) {
+  fname <- basename(experiment_file)
+  header <- c(
+    "$BATCH(SEQUENCE)",
+    "!",
+    "@ FILEX                                                                                        TRTNO RP SQ OP CO"
+  )
+  lines <- vapply(seq.int(seq_start, seq_end), function(sq) {
+    sprintf("%-93s%6d  1%6d  1  0", fname, as.integer(trt), as.integer(sq))
+  }, character(1))
+
+  con <- file(batch_path, open = "w", encoding = "UTF-8")
+  on.exit(close(con), add = TRUE)
+  writeLines(c(header, lines), con = con)
+  invisible(batch_path)
+}
+
 #' Normalize a treatment selection into an ordered, deduplicated integer vector.
 #'
 #' Mirrors the Python `_normalize_treatment_list`. Accepts either a contiguous
@@ -334,6 +382,63 @@ normalize_treatment_list <- function(treatment_start, treatment_end,
     stop("Treatment IDs must be positive integers.", call. = FALSE)
   }
   trt_vec
+}
+
+#' Run DSSAT with captured stdout/stderr and fail-loud exit handling
+#'
+#' Mirrors Python `run_dssat`. `model` is optional for DSSAT builds that expect
+#' calls such as `dscsm048 CRGRO048 B DSSBatch.V48`.
+#'
+#' @export
+run_dssat <- function(run_dir, exe, run_mode_flag = "A", filex = "",
+                      model = NULL, timeout = 0) {
+  arg <- if (run_mode_flag %in% c("B", "Q", "N", "S")) {
+    "DSSBatch.V48"
+  } else if (!is.null(filex) && nzchar(filex)) {
+    filex
+  } else {
+    "DSSBatch.V48"
+  }
+
+  exe_path <- exe
+  has_dir <- grepl("[/\\\\]", exe)
+  if (!has_dir) {
+    resolved <- Sys.which(exe)
+    if (nzchar(resolved)) exe_path <- resolved
+  }
+  if (has_dir && !file.exists(exe_path)) {
+    stop(sprintf("DSSAT executable not found: %s", exe_path), call. = FALSE)
+  }
+
+  args <- c(run_mode_flag, arg)
+  if (!is.null(model) && nzchar(as.character(model))) {
+    args <- c(as.character(model), run_mode_flag, arg)
+  }
+
+  old_wd <- getwd()
+  setwd(run_dir)
+  on.exit(setwd(old_wd), add = TRUE)
+
+  out_file <- sprintf("dssat_%s_stdout_stderr.log", run_mode_flag)
+  output <- tryCatch(
+    withCallingHandlers(
+      system2(exe_path, args = args, stdout = TRUE, stderr = TRUE, timeout = timeout),
+      warning = function(w) invokeRestart("muffleWarning")
+    ),
+    error = function(e) structure(conditionMessage(e), status = 1L)
+  )
+  status <- attr(output, "status")
+  if (is.null(status)) status <- 0L
+  if (length(output)) {
+    try(append_utf8(out_file, paste(output, collapse = "\n")), silent = TRUE)
+  }
+  if (!identical(as.integer(status), 0L)) {
+    tail_msg <- if (length(output)) paste(tail(output, 12), collapse = " | ") else "<no stdout/stderr captured>"
+    stop(sprintf("DSSAT exited with status %s in mode %s using %s. Log: %s. Tail: %s",
+                 status, run_mode_flag, arg, file.path(run_dir, out_file), tail_msg),
+         call. = FALSE)
+  }
+  invisible(output)
 }
 
 #' Run DSSAT Simulation for a single point (R Implementation)
@@ -384,28 +489,6 @@ run_simulation <- function(ID,
   )
   if (!length(trt_vec)) return(NULL)
 
-  run_dssat_logged <- function(run_mode = "B", batch_file = "DSSBatch.V48") {
-    out_file <- sprintf("dssat_%s_stdout_stderr.log", run_mode)
-    output <- tryCatch(
-      withCallingHandlers(
-        system2(dssat_exe_path, args = c(run_mode, batch_file), stdout = TRUE, stderr = TRUE),
-        warning = function(w) invokeRestart("muffleWarning")
-      ),
-      error = function(e) structure(conditionMessage(e), status = 1L)
-    )
-    status <- attr(output, "status")
-    if (is.null(status)) status <- 0L
-    if (length(output)) {
-      try(append_utf8(out_file, paste(output, collapse = "\n")), silent = TRUE)
-    }
-    if (!identical(as.integer(status), 0L)) {
-      tail_msg <- if (length(output)) paste(tail(output, 12), collapse = " | ") else "<no stdout/stderr captured>"
-      stop(sprintf("DSSAT exited with status %s in mode %s using %s. Log: %s. Tail: %s",
-                   status, run_mode, batch_file, out_file, tail_msg), call. = FALSE)
-    }
-    invisible(output)
-  }
-
   template_ext <- tools::file_ext(template_file_name)
   experiment_file <- list.files(pattern = paste0("\\.", template_ext, "$"))[1]
   if (is.na(experiment_file)) {
@@ -448,8 +531,8 @@ run_simulation <- function(ID,
     # MODE A: EXPERIMENT 
     if (run_mode == "experiment") {
       batch_file_path <- file.path(getwd(), 'DSSBatch.V48')
-      DSSAT::write_dssbatch(x = experiment_file, trtno = trt_vec, file_name = batch_file_path)
-      run_dssat_logged("B", basename(batch_file_path))
+      write_dssbatch(experiment_file, trt_vec, batch_file_path, run_mode = "experiment")
+      run_dssat(".", dssat_exe_path, "B")
 
       if (!file.exists('summary.csv')) {
         has_summary_out <- file.exists("Summary.OUT")
@@ -517,11 +600,11 @@ run_simulation <- function(ID,
       # MODE B: SEQUENCE 
     } else if (run_mode == "sequence") {
       for (trt in trt_vec) {
-        seq_vec <- sequence_start:sequence_end
-        n_seq <- length(seq_vec)
-        batch_data <- dplyr::tibble(FILEX = experiment_file, TRTNO = rep(trt, n_seq), RP = 1, SQ = seq_vec, OP = 1, CO = 0)
-        DSSAT::write_dssbatch(batch_data)
-        run_dssat_logged("Q", "DSSBatch.V48")
+        batch_file_path <- file.path(getwd(), 'DSSBatch.V48')
+        write_dssbatch_sequence(experiment_file, trt,
+                                sequence_start, sequence_end,
+                                batch_file_path)
+        run_dssat(".", dssat_exe_path, "Q")
         if (!file.exists('summary.csv')) {
           log_run_error(sprintf("trt %d: DSSAT completed but produced no 'summary.csv' (FMOPT must be 'C'; see ERROR.OUT, WARNING.OUT, INFO.OUT, dssat_Q_stdout_stderr.log).", trt))
           next

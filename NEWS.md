@@ -10,6 +10,20 @@
 
 ---
 
+## [0.3.0] - 2026-06-18
+
+### Added
+- Public R/Python execution helpers: `run_dssat`, `write_dssbatch`,
+  `write_dssbatch_sequence`, and Python `normalize_treatment_list`.
+- Python `run_dssat(..., model=..., timeout=...)` supports DSSAT builds that
+  expect a crop-model argument before the run mode (for example
+  `CRGRO048 B DSSBatch.V48`), while preserving the original engine call shape.
+
+### Changed
+- `run_simulation` now calls the public batch/execution helpers internally.
+- Private Python helper names remain as backward-compatible aliases for existing
+  consumers.
+
 ## [0.2.0] - 2026-06-17
 
 ### Added

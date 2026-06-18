@@ -23,6 +23,9 @@ Both languages expose the same public surface (`R/engine.R`, `python/dssatengine
 | `create_grid_points` | Build a regular grid of points inside a boundary polygon (Albers EPSG:5070), write a point shapefile with `LAT`/`LONG`/`ID`. |
 | `load_existing_points` | Load a user point/polygon shapefile, reproject to EPSG:4326, normalize/regenerate the `ID` column. |
 | `extend_weather_repeat_single_ignore_partial` | Extend a `.WTH` file to a target end year by repeating a complete reference year (month-day matched, leap-aware), preserving `YYDDD`/`YYYYDDD` format. |
+| `normalize_treatment_list` | Normalize contiguous or explicit treatment selections into ordered, deduplicated positive integers. |
+| `write_dssbatch` / `write_dssbatch_sequence` | Write DSSAT `DSSBatch.V48` files with the FileX field starting in column 1. |
+| `run_dssat` | Spawn DSSAT with stdout/stderr logging and non-zero exit handling; supports optional crop-model argument for custom builds. |
 | `run_simulation` | Build a per-point DSSAT run folder, write `DSSBatch.V48`, spawn `dscsm048`, parse `summary.csv` (+ `soilorg`/`soilni`/`soilwat` supplements) into a tidy results frame. |
 
 `run_simulation` supports two run modes — `experiment` (mode `A`) and `sequence` (mode `Q`) —
@@ -47,21 +50,21 @@ Per [`CONVENTIONS.md`](CONVENTIONS.md) §6, the engine:
 
 ### Python
 ```bash
-pip install "git+https://github.com/alwinhopf/dssatengine.git@v0.2.0"
+pip install "git+https://github.com/alwinhopf/dssatengine.git@v0.3.0"
 ```
 or pin in `requirements.txt`:
 ```
-dssatengine @ git+https://github.com/alwinhopf/dssatengine.git@v0.2.0
+dssatengine @ git+https://github.com/alwinhopf/dssatengine.git@v0.3.0
 ```
 ```python
-from dssatengine import create_grid_points, load_existing_points
+from dssatengine import create_grid_points, load_existing_points, run_dssat
 from dssatengine.engine import _run_one_point   # parallel-driver entry point
 ```
 
 ### R
 ```r
 # install.packages("remotes")
-remotes::install_github("alwinhopf/dssatengine@v0.2.0")
+remotes::install_github("alwinhopf/dssatengine@v0.3.0")
 library(dssatengine)
 ```
 
@@ -70,7 +73,7 @@ library(dssatengine)
 Semantic versioning with git tags. **Consumers always pin to a tag** (`@vX.Y.Z`), never
 `main`, so upstream changes never break a pipeline until the pin is deliberately bumped.
 After editing the engine, commit and **push the matching tag** before relying on a clean
-install from GitHub. The current release is `v0.2.0`; per-consumer pins are tracked in
+install from GitHub. The current release is `v0.3.0`; per-consumer pins are tracked in
 [`DEPENDENCIES.md`](DEPENDENCIES.md), and the change history is in [`NEWS.md`](NEWS.md).
 
 ## Testing

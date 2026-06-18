@@ -150,7 +150,7 @@ blind.
 
 ### P1 — Extract the gridded engine into a versioned package ✅ DONE
 The canonical engine was extracted into the **`dssatengine`** package (R + Python,
-v0.2.0), exactly as `dssatutils` was. `DSSAT_Gridded_Run_Tutorial` and
+v0.3.0), exactly as `dssatutils` was. `DSSAT_Gridded_Run_Tutorial` and
 `DSSAT-SubField-MILP-Analysis` now import it as thin wrappers (zero local engine defs);
 `Bioenergy` references it via `ENGINE_DIR`.
 `dssat_main_pipeline.{R,py}` is no longer hand-copied, so a fix lands once and reaches

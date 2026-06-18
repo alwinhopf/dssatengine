@@ -231,8 +231,8 @@ def extend_weather_repeat_single_ignore_partial(
         print(f"Wrote extended file: {path} up to {target_end_year}")
     return True
 
-def _write_dssbatch(experiment_file: str, trtno_list: list,
-                    batch_path: str, run_mode: str = "experiment") -> None:
+def write_dssbatch(experiment_file: str, trtno_list: list,
+                   batch_path: str, run_mode: str = "experiment") -> None:
     mode_tag = "EXPERIMENT" if run_mode == "experiment" else "SEQUENCE"
     header   = (
         f"$BATCH({mode_tag})\n"
@@ -254,9 +254,9 @@ def _write_dssbatch(experiment_file: str, trtno_list: list,
         fh.write(header)
         fh.write("\n".join(lines) + "\n")
 
-def _write_dssbatch_sequence(experiment_file: str, trt: int,
-                              seq_start: int, seq_end: int,
-                              batch_path: str) -> None:
+def write_dssbatch_sequence(experiment_file: str, trt: int,
+                            seq_start: int, seq_end: int,
+                            batch_path: str) -> None:
     fname  = os.path.basename(experiment_file)
     header = (
         "$BATCH(SEQUENCE)\n"
@@ -266,7 +266,7 @@ def _write_dssbatch_sequence(experiment_file: str, trt: int,
     )
     lines = []
     for sq in range(seq_start, seq_end + 1):
-        # FileX must start at column 1 (no leading space); see _write_dssbatch.
+        # FileX must start at column 1 (no leading space); see write_dssbatch.
         # A leading space crashes CSM.for with "Substring out of bounds".
         filex_padded = f"{fname:<93s}"
         lines.append(f"{filex_padded}{trt:6d}  1{sq:6d}  1  0")
@@ -275,10 +275,10 @@ def _write_dssbatch_sequence(experiment_file: str, trt: int,
         fh.write(header)
         fh.write("\n".join(lines) + "\n")
 
-def _normalize_treatment_list(treatment_start: int,
-                              treatment_end: int,
-                              treatment_list: Optional[list] = None,
-                              treatments: Optional[list] = None) -> list[int]:
+def normalize_treatment_list(treatment_start: int,
+                             treatment_end: int,
+                             treatment_list: Optional[list] = None,
+                             treatments: Optional[list] = None) -> list[int]:
     has_list = treatment_list is not None and len(treatment_list) > 0
     has_legacy = treatments is not None and len(treatments) > 0
     if has_list and has_legacy:
@@ -322,8 +322,9 @@ def _normalize_treatment_list(treatment_start: int,
         )
     return trt_vec
 
-def _run_dssat(run_dir: str, exe: str, run_mode_flag: str = "A",
-               filex: str = "") -> None:
+def run_dssat(run_dir: str, exe: str, run_mode_flag: str = "A",
+              filex: str = "", model: Optional[str] = None,
+              timeout: Optional[float] = None) -> None:
     if run_mode_flag in ("B", "Q", "N", "S"):
         arg = "DSSBatch.V48"
     else:
@@ -334,9 +335,12 @@ def _run_dssat(run_dir: str, exe: str, run_mode_flag: str = "A",
         raise FileNotFoundError(f"DSSAT executable not found: {exe_path}")
 
     cmd = [exe_path, run_mode_flag, arg]
+    if model:
+        cmd = [exe_path, str(model), run_mode_flag, arg]
     result = subprocess.run(
         cmd,
         cwd=run_dir,
+        timeout=timeout,
         check=False,
         capture_output=True,
         text=True,
@@ -354,6 +358,14 @@ def _run_dssat(run_dir: str, exe: str, run_mode_flag: str = "A",
             f"DSSAT exited with status {result.returncode} in mode {run_mode_flag} "
             f"using {arg}. Log: {log_path}. Tail: {tail}"
         )
+
+
+# Backward-compatible aliases for consumers that imported the private helpers
+# before the v0.3.0 public API promotion.
+_write_dssbatch = write_dssbatch
+_write_dssbatch_sequence = write_dssbatch_sequence
+_normalize_treatment_list = normalize_treatment_list
+_run_dssat = run_dssat
 
 def _read_csv_safe(path: str) -> Optional[pd.DataFrame]:
     if not os.path.exists(path):
@@ -547,7 +559,7 @@ def _run_simulation(ID: str,
     results = pd.DataFrame(results_template)
 
     try:
-        trt_vec = _normalize_treatment_list(
+        trt_vec = normalize_treatment_list(
             treatment_start, treatment_end, treatment_list, treatments
         )
 
@@ -556,8 +568,8 @@ def _run_simulation(ID: str,
         # ------------------------------------------------------------------ #
         if run_mode == "experiment":
             batch_path = os.path.join(point_dir, "DSSBatch.V48")
-            _write_dssbatch(exp_path, trt_vec, batch_path, run_mode="experiment")
-            _run_dssat(point_dir, dssat_exe_path, "A", filex=exp_fname)
+            write_dssbatch(exp_path, trt_vec, batch_path, run_mode="experiment")
+            run_dssat(point_dir, dssat_exe_path, "A", filex=exp_fname)
 
             summary = _read_csv_safe(os.path.join(point_dir, "summary.csv"))
             if summary is None or summary.empty:
@@ -583,10 +595,10 @@ def _run_simulation(ID: str,
 
             for trt in trt_vec:
                 batch_path = os.path.join(point_dir, "DSSBatch.V48")
-                _write_dssbatch_sequence(exp_path, trt,
-                                         sequence_start, sequence_end,
-                                         batch_path)
-                _run_dssat(point_dir, dssat_exe_path, "Q")
+                write_dssbatch_sequence(exp_path, trt,
+                                        sequence_start, sequence_end,
+                                        batch_path)
+                run_dssat(point_dir, dssat_exe_path, "Q")
 
                 summary = _read_csv_safe(os.path.join(point_dir, "summary.csv"))
                 if summary is None or summary.empty:

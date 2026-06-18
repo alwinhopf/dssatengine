@@ -50,3 +50,14 @@ test_that("treatment_list and legacy treatments cannot be combined", {
     "only one explicit treatment selector"
   )
 })
+
+test_that("write_dssbatch writes explicit treatments", {
+  batch <- tempfile(fileext = ".V48")
+  write_dssbatch("CARINATA1984.SQX", c(1L, 5L, 10L), batch,
+                 run_mode = "experiment")
+  text <- readLines(batch, warn = FALSE, encoding = "UTF-8")
+  expect_true(any(grepl("CARINATA1984.SQX", text, fixed = TRUE)))
+  expect_true(any(grepl("     1", text, fixed = TRUE)))
+  expect_true(any(grepl("     5", text, fixed = TRUE)))
+  expect_true(any(grepl("    10", text, fixed = TRUE)))
+})
