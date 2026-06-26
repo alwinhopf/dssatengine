@@ -266,10 +266,16 @@ def write_dssbatch_sequence(experiment_file: str, trt: int,
     )
     lines = []
     for sq in range(seq_start, seq_end + 1):
-        # FileX must start at column 1 (no leading space); see write_dssbatch.
-        # A leading space crashes CSM.for with "Substring out of bounds".
-        filex_padded = f"{fname:<93s}"
-        lines.append(f"{filex_padded}{trt:6d}  1{sq:6d}  1  0")
+        # Column layout is load-bearing in SEQUENCE mode. CSM.for reads the
+        # treatment fields from CHARTEST(93:113) with FORMAT(3(1X,I6)):
+        #   cols 94-99 = TRTNO, 101-106 = RP, 108-113 = ROTNO/SQ.
+        # The SQ (rotation) field MUST land in 108-113; if it does not, sequence
+        # mode mis-reads the rotation number and aborts with libgfortran IOSTAT
+        # 5010 (read overflow) while parsing the FileX. FileX still starts in
+        # column 1 (a leading blank breaks CSM's INDEX/substring math, see
+        # write_dssbatch). Build it field-by-field so the columns are exact:
+        #   <92 FileX> SP <TRTNO i6> SP <RP i6> SP <SQ i6> SP <OP i6> SP <CO i6>
+        lines.append(f"{fname:<92s} {trt:6d} {1:6d} {sq:6d} {1:6d} {0:6d}")
 
     with open(batch_path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(header)
@@ -649,3 +655,6 @@ def _run_one_point(args: dict) -> Optional[pd.DataFrame]:
         args["weather_start_year"], args["weather_end_year"],
         args["dssat_exe_path"], args.get("treatment_list"), args.get("treatments")
     )
+
+
+run_simulation = _run_simulation

@@ -1,0 +1,15 @@
+
+*SOIL N BALANCE - CENTURY ROUTINES
+
+*DSSAT Cropping System Model Ver. 4.8.5.049 -develop  JUN 23, 2026 09:37:15
+
+!                              |--------------- Initial N State Variables ----------------|----------------- Final N State Variables -----------------|------------- N Additions -------------|---------------- N Subtractions -----------------|--Mineralization---|----- Seasonal Balance -----|
+!                              |----------------- Organic ----------------------|         |------------------ Organic ----------------------|         |  Harvest   Applied                    |              Tile-     Plant     N gas     Flood|   Miner-    Immob-|                            |
+!                              | Surface      SOM1      SOM2      SOM3    Litter     Inorg|  Surface      SOM1      SOM2      SOM3    Litter     Inorg|  Residue   Residue  Fertiliz   Senesed|  Leached   drained    Uptake    Losses    Losses|   alized    ilized|Inorganic   Organic   Overall
+@Run FILEX               TN CR     SN0Di    S1NTDi    S2NTDi    S3NTDi     LNTDi     NIADi      SN0D     S1NTD     S2NTD     S3NTD      LNTD      NIAD      HRNH     RESNC      NICM     SNNTC      NLCM      TDFC      NUCM     NGasC      RNRO      NMNC      NIMC    InNBal   OrgNBal     SNBAL
+   1 00000006.WHX         1 WH      0.00      0.00  16253.24      0.00     80.10    226.76      0.41      0.00  16243.90      0.00     74.05    240.79      0.00      0.00      0.00      0.43      0.00      0.00      1.14      0.23      0.00     15.41      0.00      0.00     -0.00     -0.00
+   2 00000006.WHX         2 WH      0.00      0.00  16253.24      0.00     80.10    226.76      0.42      0.00  16243.88      0.00     74.10    300.50      0.00      0.00     60.00      0.45      0.00      0.00      1.26      0.38      0.00     15.38      0.00     -0.00      0.00     -0.00
+   3 00000006.WHX         3 WH      0.00      0.00  16253.24      0.00     80.10    226.76      0.44      0.00  16243.88      0.00     74.12    420.06      0.00      0.00    180.00      0.46      0.00      0.00      1.39      0.68      0.00     15.37      0.00      0.00     -0.00     -0.00
+   4 00000006.WHX         4 WH      0.00      0.00  16253.24      0.00     80.10    226.76      0.41      0.00  16243.90      0.00     74.05    240.79      0.00      0.00      0.00      0.43      0.00      0.00      1.14      0.23      0.00     15.41      0.00      0.00     -0.00     -0.00
+   5 00000006.WHX         5 WH      0.00      0.00  16253.24      0.00     80.10    226.76      0.42      0.00  16243.88      0.00     74.10    300.50      0.00      0.00     60.00      0.45      0.00      0.00      1.26      0.38      0.00     15.38      0.00     -0.00      0.00     -0.00
+   6 00000006.WHX         6 WH      0.00      0.00  16253.24      0.00     80.10    226.76      0.44      0.00  16243.88      0.00     74.12    420.06      0.00      0.00    180.00      0.46      0.00      0.00      1.39      0.68      0.00     15.37      0.00      0.00     -0.00     -0.00

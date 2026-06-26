@@ -6,6 +6,7 @@ from .engine import (
     write_dssbatch_sequence,
     normalize_treatment_list,
     run_dssat,
+    run_simulation,
     _write_dssbatch,
     _write_dssbatch_sequence,
     _run_dssat,
@@ -15,4 +16,15 @@ from .engine import (
     _build_result_rows,
     _run_simulation,
     _run_one_point,
+)
+from .output_parser import (
+    parse_timeseries,
+    parse_plantgro,
+    parse_plantn,
+    parse_summary,
+    parse_evaluate,
+    parse_csv,
+    parse_dssat_output,
+    read_run_directory,
+    yyddd_to_date,
 )

@@ -61,3 +61,20 @@ test_that("write_dssbatch writes explicit treatments", {
   expect_true(any(grepl("     5", text, fixed = TRUE)))
   expect_true(any(grepl("    10", text, fixed = TRUE)))
 })
+
+test_that("write_dssbatch_sequence places SQ in CSM's ROTNO columns 108-113", {
+  # SEQUENCE mode reads CHARTEST(93:113) as 3(1X,I6): TRTNO@94-99, RP@101-106,
+  # ROTNO/SQ@108-113. Wrong columns -> DSSAT aborts (IOSTAT 5010). Mirrors the
+  # Python parity test.
+  batch <- tempfile(fileext = ".V48")
+  write_dssbatch_sequence("00000003.SQX", 2L, 1L, 3L, batch)
+  text <- readLines(batch, warn = FALSE, encoding = "UTF-8")
+  data <- text[startsWith(text, "00000003.SQX")]
+  expect_equal(length(data), 3)
+  for (i in seq_along(data)) {
+    ln <- data[i]
+    expect_equal(substr(ln, 94, 99), "     2")              # TRTNO
+    expect_equal(substr(ln, 101, 106), "     1")            # RP
+    expect_equal(substr(ln, 108, 113), sprintf("%6d", i))   # SQ/ROTNO
+  }
+})

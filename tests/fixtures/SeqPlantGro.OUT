@@ -1,0 +1,23 @@
+$GROWTH ASPECTS OUTPUT FILE
+
+*DSSAT Cropping System Model Ver. 4.8.5.049 -HEAD  JUN 02, 2026 23:25:49
+
+*RUN   1        : MAIZE ROTATION PHASE 1                  MZCER048 SEQ00001    1
+ MODEL          : MZCER048 - Maize
+ EXPERIMENT     : SEQ00001 CORN-SOY ROTATION
+ TREATMENT  1   : MAIZE ROTATION PHASE 1                  MZCER048
+
+@YEAR DOY   DAS   DAP  GSTD  LAID  CWAD  GWAD
+ 2001 100     1     0  1.00  0.00     0     0
+ 2001 101     2     1  2.00  0.05    10     0
+ 2001 102     3     2  3.00  0.12    25     0
+
+*RUN   2        : SOYBEAN ROTATION PHASE 2                CRGRO048 SEQ00001    2
+ MODEL          : CRGRO048 - Soybean
+ EXPERIMENT     : SEQ00001 CORN-SOY ROTATION
+ TREATMENT  1   : SOYBEAN ROTATION PHASE 2                CRGRO048
+
+@YEAR DOY   DAS   DAP  GSTD  LAID  CWAD  SWAD  PODWT
+ 2002 150     1     0  1.00  0.00     0     0      0
+ 2002 151     2     1  1.50  0.08    12     2      0
+ 2002 152     3     2  2.10  0.20    30     8      5

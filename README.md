@@ -28,6 +28,31 @@ Both languages expose the same public surface (`R/engine.R`, `python/dssatengine
 | `run_dssat` | Spawn DSSAT with stdout/stderr logging and non-zero exit handling; supports optional crop-model argument for custom builds. |
 | `run_simulation` | Build a per-point DSSAT run folder, write `DSSBatch.V48`, spawn `dscsm048`, parse `summary.csv` (+ `soilorg`/`soilni`/`soilwat` supplements) into a tidy results frame. |
 
+### Output parsers (`output_parser.py` / `parser.R`)
+
+The `run → parse` half of the engine. Same function names in both languages;
+`-99` maps to NaN/NA and dates are derived from `YEAR`+`DOY` / `*DAT` codes.
+
+| Function | Role |
+|---|---|
+| `parse_timeseries` | Any `.OUT` block table with an `@` header — daily series (`PlantGro`, `PlantN`, `PlantGr2`, `MgmtOps`, `GHG`, `N2O`, `Mulch`, `ET`, `SoilWat`, `SoilNi`, `SoilOrg`, `SoilTemp`, `Weather`, …) **and** non-daily tables (`Leaves` by leaf #, the `*BalSum` per-run balance summaries) → one row per (run, row) with `run`/`treatment`/`crop_model`/`rotation` and a `date` when YEAR+DOY exist. Aliases: `parse_plantgro`, `parse_plantn`. |
+| `parse_summary` | Fixed-width `Summary.OUT` → one row per run; recovers spacey `TNAM`/`FNAM`/`MODEL` by header column positions; adds `*_date` twins. |
+| `parse_evaluate` | `Evaluate.OUT` → long `(treatment, run, variable, sim, meas)` table. |
+| `parse_csv` | `FMOPT='C'` CSV twins (`summary.csv`, `plantgro.csv`) with identical conventions. |
+| `parse_dssat_output` / `read_run_directory` | Dispatch one file by name/structure; read a whole run folder. `read_run_directory` auto-skips non-tabular balances/reports and (by default, `include_csv`) also reads the `FMOPT='C'` `.csv` twins so a CSV-mode run is read as fully as a text run (`.OUT` wins when both exist); or pass an explicit file list — typically `["Summary.OUT", "PlantGro.OUT"]`. |
+
+**Sequence (.SQX) note.** Sequence simulations write multi-`*RUN` files whose
+rotation phases may be *different crops with different headers*; the parsers keep
+each block's own header, concatenate by column name (missing columns → NA), and
+tag every row with `rotation`/`crop_model` so phases stay separable. Experiment
+(`.??X`) runs have one block per treatment with a shared header.
+
+```python
+from dssatengine import read_run_directory, parse_summary, parse_plantgro
+run = read_run_directory("dssat_runs/0001", files=["Summary.OUT", "PlantGro.OUT"])
+yields, daily = run["summary"], run["plantgro"]
+```
+
 `run_simulation` supports two run modes — `experiment` (mode `A`) and `sequence` (mode `Q`) —
 and selects treatments either as a contiguous `treatment_start … treatment_end` range or as an
 explicit, possibly non-contiguous `treatment_list` (e.g. `[5, 1, 10]`, order-preserving and
@@ -50,11 +75,11 @@ Per [`CONVENTIONS.md`](CONVENTIONS.md) §6, the engine:
 
 ### Python
 ```bash
-pip install "git+https://github.com/alwinhopf/dssatengine.git@v0.3.0"
+pip install "git+https://github.com/alwinhopf/dssatengine.git@v0.4.0"
 ```
 or pin in `requirements.txt`:
 ```
-dssatengine @ git+https://github.com/alwinhopf/dssatengine.git@v0.3.0
+dssatengine @ git+https://github.com/alwinhopf/dssatengine.git@v0.4.0
 ```
 ```python
 from dssatengine import create_grid_points, load_existing_points, run_dssat
@@ -64,7 +89,7 @@ from dssatengine.engine import _run_one_point   # parallel-driver entry point
 ### R
 ```r
 # install.packages("remotes")
-remotes::install_github("alwinhopf/dssatengine@v0.3.0")
+remotes::install_github("alwinhopf/dssatengine@v0.4.0")
 library(dssatengine)
 ```
 
@@ -73,7 +98,7 @@ library(dssatengine)
 Semantic versioning with git tags. **Consumers always pin to a tag** (`@vX.Y.Z`), never
 `main`, so upstream changes never break a pipeline until the pin is deliberately bumped.
 After editing the engine, commit and **push the matching tag** before relying on a clean
-install from GitHub. The current release is `v0.3.0`; per-consumer pins are tracked in
+install from GitHub. The current release is `v0.4.0`; per-consumer pins are tracked in
 [`DEPENDENCIES.md`](DEPENDENCIES.md), and the change history is in [`NEWS.md`](NEWS.md).
 
 ## Testing
@@ -87,6 +112,7 @@ python -m pytest -q
 testthat::test_dir("tests/testthat")
 ```
 
-The fast tests cover treatment-list normalization and `DSSBatch.V48` writing in both
-languages (R/Python parity per [`CONVENTIONS.md`](CONVENTIONS.md) §3). End-to-end runs that
-spawn `dscsm048` require a DSSAT48 install and live in the consumer pipelines.
+The fast tests cover treatment-list normalization, `DSSBatch.V48` writing, and the
+output parsers — the latter against real DSSAT 4.8 fixtures in `tests/fixtures/` — in
+both languages (R/Python parity per [`CONVENTIONS.md`](CONVENTIONS.md) §3). End-to-end
+runs that spawn `dscsm048` require a DSSAT48 install and live in the consumer pipelines.

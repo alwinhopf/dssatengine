@@ -10,6 +10,63 @@
 
 ---
 
+## [0.4.0] - 2026-06-23
+
+### Fixed
+- **`write_dssbatch_sequence` column alignment (sequence/mode-Q runs).** The SQ
+  (rotation) field was written at columns 103-108, but CSM.for reads the batch
+  treatment fields from `CHARTEST(93:113)` with `FORMAT(3(1X,I6))` — TRTNO at
+  94-99, RP at 101-106, **ROTNO/SQ at 108-113**. The misplaced field made DSSAT
+  mis-read the rotation number and abort every sequence run with libgfortran
+  IOSTAT 5010 (read overflow) while parsing the FileX. Both R and Python now emit
+  `<92-wide FileX> SP TRTNO SP RP SP SQ SP OP SP CO`, verified by a real 40-year
+  Hemp/Fallow `.SQX` rotation that now completes (41 season blocks). Experiment
+  (mode-A) batches were unaffected (mode A ignores RP/SQ). A column-position
+  regression test guards this in both languages.
+
+### Added
+- **Output parsers** (R + Python parity, `output_parser.py` / `parser.R`) — the
+  `run → parse` half of the engine, so consumers no longer hand-roll DSSAT
+  output reading:
+  - `parse_timeseries` — any `.OUT` block table with an `@` column header. Covers
+    every daily series (`PlantGro`, `PlantN`, `PlantGr2`, `PlantGrf`, `MgmtOps`,
+    `MgmtEvent`, `GHG`, `N2O`, `Mulch`, `ET`, `SoilWat`, `SoilWater`, `SoilNi`,
+    `SoilOrg`, `SoilTemp`, `Weather`, …) plus non-daily tables keyed differently —
+    `Leaves.OUT` (by leaf number) and the per-season balance summaries
+    (`SWBalSum`, `SoilCBalSum`, `SoilNBalSum`, one row per run). One row per
+    (run, row) with `run`/`treatment`/`crop_model`/`rotation` ids and a derived
+    `date` when YEAR+DOY are present. Aliases `parse_plantgro`, `parse_plantn`.
+  - `parse_summary` — robust fixed-width `Summary.OUT` reader that recovers
+    spacey text columns (`TNAM`, `FNAM`, `MODEL`) by header column positions and
+    adds `*_date` twins for `*DAT` codes.
+  - `parse_evaluate` — long simulated-vs-measured table from `Evaluate.OUT`
+    (treatment read from `TRNO`, falling back to `TN`).
+  - `parse_csv` — `FMOPT='C'` CSV twins (`summary.csv`, `plantgro.csv`) with the
+    same `-99 → NA` and date conventions, so CSV and text runs are interchangeable.
+  - `parse_dssat_output` (dispatcher) and `read_run_directory` (whole-folder
+    reader; auto-skips non-tabular balances/reports, or pass an explicit file
+    list — the common `["Summary.OUT", "PlantGro.OUT"]` case). `read_run_directory`
+    also reads the `FMOPT='C'` `.csv` twins by default (`include_csv=True`) so a
+    CSV-mode run — whose daily data lands in `plantgro.csv` etc., not `.OUT` — is
+    read as fully as a text run; when both forms of a file exist the `.OUT` wins.
+  - `parse_csv` tolerates DSSAT's trailing-comma rows (some CSVs write one extra
+    empty field per data row) without column misalignment.
+  - `yyddd_to_date` helper for DSSAT `YYDDD`/`YYYYDDD` date codes.
+- **Sequence (.SQX) support**: multi-`*RUN` files whose rotation phases carry
+  different crop headers are concatenated by column name (missing columns → NA),
+  with `rotation`/`crop_model` distinguishing phases.
+- Tests: `tests/test_output_parser.py` and `tests/testthat/test_output_parser.R`
+  (R/Python parity), run against real DSSAT 4.8 fixtures in `tests/fixtures/`.
+  Verified end-to-end by re-running a wheat experiment with **all** output
+  switches on (`GROUT/CAOUT/WAOUT/NIOUT/MIOUT/CHOUT/OPOUT/VBOSE`) in both text
+  (`FMOPT=A`, 32 `.OUT` types) and CSV (`FMOPT=C`, 14 `.csv` + 23 `.OUT`) modes,
+  with 6 treatments → 6 `*RUN` blocks per file: every data table parsed, only the
+  free-text reports/narrative balances (`OVERVIEW`, `INFO`, `*Bal`, run lists) are
+  skipped by design. Sequence mode covered too: a real mode-Q 40-year Hemp/Fallow
+  rotation (`.SQX`) parsed in both formats — 41 season blocks split correctly,
+  continuous whole-run files (ET/GHG/SoilWat) and per-season-block files
+  (PlantGro/MgmtOps/Evaluate) both handled.
+
 ## [0.3.0] - 2026-06-18
 
 ### Added

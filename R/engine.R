@@ -26,6 +26,44 @@ append_utf8 <- function(path, text) {
   writeLines(text, con = con)
 }
 
+write_sequence_phase_file <- function(source_file, target_file, treatment, phase) {
+  lines <- readLines(source_file, warn = FALSE, encoding = "UTF-8")
+  out <- character()
+  in_treatments <- FALSE
+  matched <- FALSE
+
+  for (line in lines) {
+    if (startsWith(line, "*TREATMENTS")) {
+      in_treatments <- TRUE
+      out <- c(out, line)
+      next
+    }
+    if (in_treatments && startsWith(line, "*")) {
+      in_treatments <- FALSE
+      if (!length(out) || nzchar(tail(out, 1))) out <- c(out, "")
+      out <- c(out, line)
+      next
+    }
+    if (in_treatments && grepl("^\\s*[0-9]+\\s+[0-9]+\\s+", line)) {
+      vals <- suppressWarnings(scan(text = line, what = integer(), nmax = 2, quiet = TRUE))
+      if (length(vals) >= 2 && vals[1] == treatment && vals[2] == phase) {
+        out <- c(out, paste0(sprintf("%3d%1d %1d %1d ", 1L, 1L, 1L, 0L),
+                             substring(line, 11L)))
+        matched <- TRUE
+      }
+      next
+    }
+    out <- c(out, line)
+  }
+
+  if (!matched) {
+    stop(sprintf("No sequence treatment row found for treatment=%d, phase=%d",
+                 treatment, phase), call. = FALSE)
+  }
+  writeLines(out, target_file, useBytes = TRUE)
+  invisible(target_file)
+}
+
 #' Create a regular grid of points inside boundary_shape
 #'
 #' @export
@@ -325,8 +363,16 @@ write_dssbatch_sequence <- function(experiment_file, trt,
     "!",
     "@ FILEX                                                                                        TRTNO RP SQ OP CO"
   )
+  # Column layout is load-bearing in SEQUENCE mode. CSM.for reads the treatment
+  # fields from CHARTEST(93:113) with FORMAT(3(1X,I6)): cols 94-99 = TRTNO,
+  # 101-106 = RP, 108-113 = ROTNO/SQ. The SQ (rotation) field MUST land in
+  # 108-113; otherwise sequence mode mis-reads the rotation and aborts with
+  # libgfortran IOSTAT 5010 (read overflow) while parsing the FileX. FileX still
+  # starts in column 1 (a leading blank breaks CSM's substring math).
+  #   <92 FileX> SP <TRTNO i6> SP <RP i6> SP <SQ i6> SP <OP i6> SP <CO i6>
   lines <- vapply(seq.int(seq_start, seq_end), function(sq) {
-    sprintf("%-93s%6d  1%6d  1  0", fname, as.integer(trt), as.integer(sq))
+    sprintf("%-92s %6d %6d %6d %6d %6d", fname, as.integer(trt), 1L,
+            as.integer(sq), 1L, 0L)
   }, character(1))
 
   con <- file(batch_path, open = "w", encoding = "UTF-8")
@@ -601,9 +647,7 @@ run_simulation <- function(ID,
     } else if (run_mode == "sequence") {
       for (trt in trt_vec) {
         batch_file_path <- file.path(getwd(), 'DSSBatch.V48')
-        write_dssbatch_sequence(experiment_file, trt,
-                                sequence_start, sequence_end,
-                                batch_file_path)
+        write_dssbatch_sequence(experiment_file, trt, sequence_start, sequence_end, batch_file_path)
         run_dssat(".", dssat_exe_path, "Q")
         if (!file.exists('summary.csv')) {
           log_run_error(sprintf("trt %d: DSSAT completed but produced no 'summary.csv' (FMOPT must be 'C'; see ERROR.OUT, WARNING.OUT, INFO.OUT, dssat_Q_stdout_stderr.log).", trt))
@@ -615,25 +659,25 @@ run_simulation <- function(ID,
         if (!is.null(summary) && nrow(summary) > 0) {
           summary$PYEAR <- substr(summary$PDAT, 1, 4)
           master_runs <- dplyr::tibble(RUNNO = summary$RUNNO)
-          
+
           soil_org <- read_supp_file('soilorg.csv')
           if (!is.null(soil_org)) {
             soil_org_sum <- soil_org %>% dplyr::group_by(RUN) %>% dplyr::summarise(SOMCT_start = head(SOMCT, 1), SOMCT_end = tail(SOMCT, 1)) %>% dplyr::rename(RUNNO = RUN)
             soil_organic_summarized <- dplyr::left_join(master_runs, soil_org_sum, by = "RUNNO")
           } else { soil_organic_summarized <- master_runs %>% dplyr::mutate(SOMCT_start=NA, SOMCT_end=NA) }
-          
+
           soil_ni <- read_supp_file('soilni.csv')
           if (!is.null(soil_ni)) {
             soil_ni_sum <- soil_ni %>% dplyr::group_by(RUN) %>% dplyr::summarise(NAPC = tail(NAPC, 1), NLCC = tail(NLCC, 1), `NI#M` = tail(`NI#M`,1)) %>% dplyr::rename(RUNNO = RUN)
             soilnitrogen_summarized <- dplyr::left_join(master_runs, soil_ni_sum, by = "RUNNO")
           } else { soilnitrogen_summarized <- master_runs %>% dplyr::mutate(NAPC=NA, NLCC=NA, `NI#M`=NA) }
-          
+
           soil_wat <- read_supp_file('soilwat.csv')
           if (!is.null(soil_wat)) {
             soil_wat_sum <- soil_wat %>% dplyr::group_by(RUN) %>% dplyr::summarise(`IR#C` = tail(`IR#C`, 1), IRRC = tail(IRRC, 1)) %>% dplyr::rename(RUNNO = RUN)
             irrigation_summarized <- dplyr::left_join(master_runs, soil_wat_sum, by = "RUNNO")
           } else { irrigation_summarized <- master_runs %>% dplyr::mutate(`IR#C`=NA, IRRC=NA) }
-          
+
           seq_results <- data.frame(
             point_id = ID, run_number = summary$RUNNO, treatment = summary$TRNO, crop_code = summary$CR,
             latitude = summary$LAT, longitude = summary$LONG, weather_station_id = summary$WSTA,

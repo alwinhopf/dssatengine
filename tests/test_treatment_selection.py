@@ -38,6 +38,23 @@ def test_write_dssbatch_uses_explicit_treatments(tmp_path):
     assert "    10" in text
 
 
+def test_write_dssbatch_sequence_column_layout(tmp_path):
+    """SEQUENCE mode is column-sensitive: CSM.for reads CHARTEST(93:113) with
+    FORMAT(3(1X,I6)) -> TRTNO@94-99, RP@101-106, ROTNO/SQ@108-113. If SQ lands
+    anywhere else, DSSAT aborts with IOSTAT 5010. Guard the exact positions."""
+    from dssatengine import write_dssbatch_sequence
+    batch = tmp_path / "DSSBatch.V48"
+    write_dssbatch_sequence("00000003.SQX", trt=2, seq_start=1, seq_end=3, batch_path=str(batch))
+    data = [ln for ln in batch.read_text(encoding="utf-8").splitlines()
+            if ln.startswith("00000003.SQX")]
+    assert len(data) == 3
+    for i, ln in enumerate(data, start=1):
+        assert ln.startswith("00000003.SQX")        # FileX in column 1
+        assert ln[93:99] == "     2"                 # TRTNO cols 94-99
+        assert ln[100:106] == "     1"               # RP cols 101-106
+        assert ln[107:113] == f"{i:6d}"              # SQ/ROTNO cols 108-113
+
+
 def _fake_dssat_exe(tmp_path: Path, exit_code: int = 0) -> Path:
     if os.name == "nt":
         exe = tmp_path / "fake_dssat.bat"

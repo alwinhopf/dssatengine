@@ -1,0 +1,11 @@
+$PLANT SUMMARY
+  
+*PLANTSUM
+
+@  RUN EXCODE    TRNO RN TNAME.................... REP  RUNI S O C    CR PYEAR  PDOY  TSAP  ADAP  MDAP   FLN FLDAP HYEAR  HDAY SDWAP CWAHC  CWAM PARUE  HWAM  HWAH  BWAH  HWUM  H#AM  H#UM SDNAP  CNAM  HNAM  RNAM  TNAM  NUAM   HN%M  VN%M D1INI D2INI D3INI 
+     1 00000006WH   1  0 DRYLAND  - 0 KG N/HA        1     1 1 1 1    WH  2024   264    42   158   222   8.8    88  2025   120    46     0   150   0.4    45    45   105 0.031   143     1   0.9     1     1     0     2     1   2.00  0.29   -99   -99   -99
+     2 00000006WH   2  0 DRYLAND  - 60 KG N/HA       1     1 1 1 1    WH  2024   264    42   158   222   8.8    88  2025   120    46     0   168   0.4    47    47   121 0.029   163     1   0.9     1     1     0     2     1   2.00  0.26   -99   -99   -99
+     3 00000006WH   3  0 DRYLAND  - 180 KG N/HA SP   1     1 1 1 1    WH  2024   264    42   158   222   8.8    88  2025   120    46     0   181   0.4    51    51   130 0.029   177     1   0.9     1     1     0     2     1   2.00  0.26   -99   -99   -99
+     4 00000006WH   4  0 IRRIGATED - 0 KG N/HA       1     1 1 1 1    WH  2024   264    42   158   222   8.8    88  2025   120    46     0   150   0.4    45    45   105 0.031   143     1   0.9     1     1     0     2     1   2.00  0.29   -99   -99   -99
+     5 00000006WH   5  0 IRRIGATED - 60 KG N/HA      1     1 1 1 1    WH  2024   264    42   158   222   8.8    88  2025   120    46     0   168   0.4    47    47   121 0.029   163     1   0.9     1     1     0     2     1   2.00  0.26   -99   -99   -99
+     6 00000006WH   6  0 IRRIGATED 180 KG N/HA SPL   1     1 1 1 1    WH  2024   264    42   158   222   8.8    88  2025   120    46     0   181   0.4    51    51   130 0.029   177     1   0.9     1     1     0     2     1   2.00  0.26   -99   -99   -99

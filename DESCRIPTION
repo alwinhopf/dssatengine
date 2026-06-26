@@ -1,7 +1,7 @@
 Package: dssatengine
 Type: Package
 Title: Canonical Gridded Crop Modeling Engine for DSSAT
-Version: 0.3.0
+Version: 0.4.0
 Authors@R: person("Alwin", "Hopf", email = "alwinhopf@gmail.com", role = c("aut", "cre"))
 Description: Modular soil and weather download, folder building, and execution logic 
     for running the DSSAT crop model spatially/on a grid. Shared across multiple projects.

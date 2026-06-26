@@ -1,0 +1,116 @@
+$LEAF SIZES
+
+*RUN 1    :00000006WH 1 N x IR GERMANY CSCER048                              
+
+! LEAF NUMBER    8.8
+! LEAF NUMBER WHEN INCREASE FACTOR CHANGED   3.9
+! AREA OF LEAF WHEN FACTOR CHANGED   3.47
+
+@ LNUM AREAP AREA1 AREAT AREAS  T#PL  T#AL  WFLF  NFLF  AFLF  TFLF DAYSG
+     1   3.0   2.8   2.8   2.8   1.0   162   0.1   0.2   0.0   0.0   4.0
+     2   3.1   1.4   1.4   1.4   1.0   162   0.5   0.6   0.0   0.0   4.0
+     3   3.3   0.9   0.9   0.9   1.0   162   0.7   0.6   0.0   0.0   7.0
+     4   3.5   0.6   0.6   0.6   1.0   162   0.8   0.5   0.0   0.1   9.0
+     5   4.5   0.7   0.7   0.7   1.0   162   0.9   0.3   0.1   0.0   7.0
+     6   5.9   0.8   0.8   0.8   1.0   162   0.8   0.2   0.1   0.1   9.0
+     7   7.6   0.8   0.8   0.8   1.0   162   0.9   0.1   0.0   0.3  12.0
+     8   9.9   0.8   0.8   0.8   1.0   162   0.8   0.0   0.1   0.5  18.0
+     9  12.9   0.8   0.8   0.8   1.0   162   0.8   0.0   0.2   0.5  14.0
+  
+! LNUM  = Number of leaf on main axis
+! AREAP = Potential area of leaf (cm2)
+! AREA1 = Area of leaf on main axis (cm2)
+! AREAT = Area of leaves on all axes at leaf position (cm2) 
+! AREAS = Area of leaves senesced at leaf position (cm2)
+! T#PL  = Tiller number/plant at leaf position
+! T#AL  = Tiller number/area(m2) at leaf position
+! WFLF  = Water stress factor for leaf (0-1,0=0 stress)
+! NFLF  = N stress factor for leaf (0-1,0=0 stress)
+! AFLF  = Assimilate factor for leaf (0-1,0=0 no limitation)
+! TFLF  = Temperature factor for leaf (0-1,1=0 no limitation)
+! DAYSG = Number of days of growth   
+
+*RUN 2    :00000006WH 2 N x IR GERMANY CSCER048                              
+
+! LEAF NUMBER    8.8
+! LEAF NUMBER WHEN INCREASE FACTOR CHANGED   3.9
+! AREA OF LEAF WHEN FACTOR CHANGED   3.47
+
+@ LNUM AREAP AREA1 AREAT AREAS  T#PL  T#AL  WFLF  NFLF  AFLF  TFLF DAYSG
+     1   3.0   2.8   2.8   2.8   1.0   162   0.1   0.1   0.0   0.0   4.0
+     2   3.1   1.6   1.6   1.6   1.0   162   0.5   0.5   0.0   0.0   4.0
+     3   3.3   0.9   0.9   0.9   1.0   162   0.7   0.5   0.0   0.0   7.0
+     4   3.5   0.5   0.5   0.5   1.0   162   0.8   0.4   0.0   0.1   9.0
+     5   4.5   0.6   0.6   0.6   1.0   162   0.9   0.2   0.0   0.0   7.0
+     6   5.9   0.9   0.9   0.9   1.0   162   0.8   0.1   0.1   0.1   9.0
+     7   7.6   0.9   0.9   0.9   1.0   162   0.8   0.0   0.0   0.3  12.0
+     8   9.9   0.9   0.9   0.9   1.0   162   0.8   0.0   0.1   0.5  18.0
+     9  12.9   0.8   0.8   0.8   1.0   162   0.8   0.0   0.2   0.5  14.0
+
+*RUN 3    :00000006WH 3 N x IR GERMANY CSCER048                              
+
+! LEAF NUMBER    8.8
+! LEAF NUMBER WHEN INCREASE FACTOR CHANGED   3.9
+! AREA OF LEAF WHEN FACTOR CHANGED   3.47
+
+@ LNUM AREAP AREA1 AREAT AREAS  T#PL  T#AL  WFLF  NFLF  AFLF  TFLF DAYSG
+     1   3.0   2.9   2.9   2.9   1.0   162   0.1   0.1   0.0   0.0   4.0
+     2   3.1   1.7   1.7   1.7   1.0   162   0.5   0.5   0.0   0.0   4.0
+     3   3.3   0.9   0.9   0.9   1.0   162   0.7   0.5   0.0   0.0   7.0
+     4   3.5   0.5   0.5   0.5   1.0   162   0.8   0.3   0.0   0.1   9.0
+     5   4.5   0.7   0.7   0.7   1.0   162   0.8   0.1   0.0   0.0   7.0
+     6   5.9   0.9   0.9   0.9   1.0   162   0.8   0.0   0.0   0.1   9.0
+     7   7.6   0.9   0.9   0.9   1.0   162   0.8   0.0   0.0   0.3  12.0
+     8   9.9   0.9   0.9   0.9   1.0   162   0.8   0.0   0.1   0.5  18.0
+     9  12.9   0.9   0.9   0.9   1.0   162   0.8   0.0   0.1   0.5  14.0
+
+*RUN 4    :00000006WH 4 N x IR GERMANY CSCER048                              
+
+! LEAF NUMBER    8.8
+! LEAF NUMBER WHEN INCREASE FACTOR CHANGED   3.9
+! AREA OF LEAF WHEN FACTOR CHANGED   3.47
+
+@ LNUM AREAP AREA1 AREAT AREAS  T#PL  T#AL  WFLF  NFLF  AFLF  TFLF DAYSG
+     1   3.0   2.8   2.8   2.8   1.0   162   0.1   0.2   0.0   0.0   4.0
+     2   3.1   1.4   1.4   1.4   1.0   162   0.5   0.6   0.0   0.0   4.0
+     3   3.3   0.9   0.9   0.9   1.0   162   0.7   0.6   0.0   0.0   7.0
+     4   3.5   0.6   0.6   0.6   1.0   162   0.8   0.5   0.0   0.1   9.0
+     5   4.5   0.7   0.7   0.7   1.0   162   0.9   0.3   0.1   0.0   7.0
+     6   5.9   0.8   0.8   0.8   1.0   162   0.8   0.2   0.1   0.1   9.0
+     7   7.6   0.8   0.8   0.8   1.0   162   0.9   0.1   0.0   0.3  12.0
+     8   9.9   0.8   0.8   0.8   1.0   162   0.8   0.0   0.1   0.5  18.0
+     9  12.9   0.8   0.8   0.8   1.0   162   0.8   0.0   0.2   0.5  14.0
+
+*RUN 5    :00000006WH 5 N x IR GERMANY CSCER048                              
+
+! LEAF NUMBER    8.8
+! LEAF NUMBER WHEN INCREASE FACTOR CHANGED   3.9
+! AREA OF LEAF WHEN FACTOR CHANGED   3.47
+
+@ LNUM AREAP AREA1 AREAT AREAS  T#PL  T#AL  WFLF  NFLF  AFLF  TFLF DAYSG
+     1   3.0   2.8   2.8   2.8   1.0   162   0.1   0.1   0.0   0.0   4.0
+     2   3.1   1.6   1.6   1.6   1.0   162   0.5   0.5   0.0   0.0   4.0
+     3   3.3   0.9   0.9   0.9   1.0   162   0.7   0.5   0.0   0.0   7.0
+     4   3.5   0.5   0.5   0.5   1.0   162   0.8   0.4   0.0   0.1   9.0
+     5   4.5   0.6   0.6   0.6   1.0   162   0.9   0.2   0.0   0.0   7.0
+     6   5.9   0.9   0.9   0.9   1.0   162   0.8   0.1   0.1   0.1   9.0
+     7   7.6   0.9   0.9   0.9   1.0   162   0.8   0.0   0.0   0.3  12.0
+     8   9.9   0.9   0.9   0.9   1.0   162   0.8   0.0   0.1   0.5  18.0
+     9  12.9   0.8   0.8   0.8   1.0   162   0.8   0.0   0.2   0.5  14.0
+
+*RUN 6    :00000006WH 6 N x IR GERMANY CSCER048                              
+
+! LEAF NUMBER    8.8
+! LEAF NUMBER WHEN INCREASE FACTOR CHANGED   3.9
+! AREA OF LEAF WHEN FACTOR CHANGED   3.47
+
+@ LNUM AREAP AREA1 AREAT AREAS  T#PL  T#AL  WFLF  NFLF  AFLF  TFLF DAYSG
+     1   3.0   2.9   2.9   2.9   1.0   162   0.1   0.1   0.0   0.0   4.0
+     2   3.1   1.7   1.7   1.7   1.0   162   0.5   0.5   0.0   0.0   4.0
+     3   3.3   0.9   0.9   0.9   1.0   162   0.7   0.5   0.0   0.0   7.0
+     4   3.5   0.5   0.5   0.5   1.0   162   0.8   0.3   0.0   0.1   9.0
+     5   4.5   0.7   0.7   0.7   1.0   162   0.8   0.1   0.0   0.0   7.0
+     6   5.9   0.9   0.9   0.9   1.0   162   0.8   0.0   0.0   0.1   9.0
+     7   7.6   0.9   0.9   0.9   1.0   162   0.8   0.0   0.0   0.3  12.0
+     8   9.9   0.9   0.9   0.9   1.0   162   0.8   0.0   0.1   0.5  18.0
+     9  12.9   0.9   0.9   0.9   1.0   162   0.8   0.0   0.1   0.5  14.0

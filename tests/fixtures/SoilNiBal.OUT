@@ -1,0 +1,39 @@
+*SOIL INORGANIC N BALANCE
+
+*DSSAT Cropping System Model Ver. 4.8.5.049 -HEAD  JUN 02, 2026 23:25:49
+
+*RUN   1        : DRYLAND  - 0 KG N/HA      CSCER048 00000006    1
+ MODEL          : CSCER048 - Wheat
+ EXPERIMENT     : 00000006 WH N RESPONSE,KANSAS STATE  3FE(N)*2IR  (DSSAT3)
+ DATA PATH      :
+ TREATMENT  1   : DRYLAND  - 0 KG N/HA      CSCER048
+  
+
+
+!SOIL INORGANIC N BALANCE                         Initial               Final
+!                                                Year/Doy            Year/Doy
+!                                                2024/263            2025/120
+!                                               (kg[N]/ha)          (kg[N]/ha)
+! Soil N state variables:
+!   Soil NO3                                       148.23              240.31
+!   Soil NH4                                        78.53                0.48
+!   Soil Urea                                        0.00                0.00
+!   Soil N gases                                     0.00                0.00
+!   Unreleased fert N                                                    0.00
+
+! N additions:
+!   Fertilizer N                                     0.00
+!   Mineralized N                                   15.41
+
+! N subtractions:
+!   N immobilized                                                        0.00
+!   N leached                                                            0.00
+!   N loss to tile drainage                                              0.00
+!   N Uptake From Soil                                                   1.14
+!   NH3 loss                                                             0.00
+!   N2O loss                                                             0.09
+!   N2 loss                                                              0.00
+!   NO loss                                                              0.14
+
+!   Total N balance                                242.17              242.17
+!   Balance                                                             0.000
