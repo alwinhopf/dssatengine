@@ -325,6 +325,25 @@ extend_weather_repeat_single_ignore_partial <- function(f,
   return(TRUE)
 }
 
+safe_write_lines <- function(text, path, max_attempts = 5, delay_sec = 1) {
+  for (attempt in seq_len(max_attempts)) {
+    ok <- tryCatch({
+      con <- file(path, open = "w", encoding = "UTF-8")
+      writeLines(text, con = con)
+      close(con)
+      TRUE
+    }, error = function(e) {
+      if (attempt == max_attempts) {
+        stop(sprintf("Failed to write to %s after %d attempts: %s", path, max_attempts, conditionMessage(e)), call. = FALSE)
+      }
+      Sys.sleep(delay_sec)
+      FALSE
+    })
+    if (ok) break
+  }
+  invisible(path)
+}
+
 #' Write a DSSAT batch file for experiment-mode treatment runs
 #'
 #' Mirrors Python `write_dssbatch`. The FileX value intentionally starts in
@@ -345,10 +364,7 @@ write_dssbatch <- function(experiment_file, trtno_list,
     sprintf("%-93s%6d  1  0  1  0", fname, trt)
   }, character(1))
 
-  con <- file(batch_path, open = "w", encoding = "UTF-8")
-  on.exit(close(con), add = TRUE)
-  writeLines(c(header, lines), con = con)
-  invisible(batch_path)
+  safe_write_lines(c(header, lines), batch_path)
 }
 
 #' Write a DSSAT batch file for sequence-mode runs
@@ -375,10 +391,7 @@ write_dssbatch_sequence <- function(experiment_file, trt,
             as.integer(sq), 1L, 0L)
   }, character(1))
 
-  con <- file(batch_path, open = "w", encoding = "UTF-8")
-  on.exit(close(con), add = TRUE)
-  writeLines(c(header, lines), con = con)
-  invisible(batch_path)
+  safe_write_lines(c(header, lines), batch_path)
 }
 
 #' Normalize a treatment selection into an ordered, deduplicated integer vector.
