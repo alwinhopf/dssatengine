@@ -6,9 +6,13 @@ The **canonical gridded DSSAT-CSM execution engine**, shipped as a dual-language
 (R + Python) with matching function names. It is the extracted, version-pinned home for the
 points → weather + soil → FileX → run → parse workflow that consumer repos used to hand-copy.
 
-Consumers (`DSSAT_Gridded_Run_Tutorial`, `DSSAT-SubField-MILP-Analysis`, and — via
-`ENGINE_DIR` — `Bioenergy_Model_Input_Comparison`) import this package as a thin wrapper and
-carry **zero local engine definitions**, so a fix lands once and reaches every consumer.
+Consumers use this package through their selected gridded-engine environment:
+`DSSAT_Gridded_Run_Tutorial` imports it inside `dssat_main_pipeline.{py,R}`;
+`DSSAT-SubField-MILP-Analysis` shells out to that sibling gridded engine via
+`DSSAT_ENGINE_DIR`; and `Bioenergy_Model_Input_Comparison` points at the engine via
+`ENGINE_DIR`. Application repos should carry **zero local engine definitions**, so a
+fix lands once and reaches consumers when their pinned/shared engine environment is
+bumped.
 
 > For how this package fits the wider workspace, see the canonical
 > [`ARCHITECTURE.md`](../DSSAT_Gridded_Run_Tutorial/ARCHITECTURE.md), the pins in

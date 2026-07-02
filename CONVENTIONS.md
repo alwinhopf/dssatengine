@@ -150,11 +150,12 @@ blind.
 
 ### P1 — Extract the gridded engine into a versioned package ✅ DONE
 The canonical engine was extracted into the **`dssatengine`** package (R + Python,
-v0.3.0), exactly as `dssatutils` was. `DSSAT_Gridded_Run_Tutorial` and
-`DSSAT-SubField-MILP-Analysis` now import it as thin wrappers (zero local engine defs);
-`Bioenergy` references it via `ENGINE_DIR`.
-`dssat_main_pipeline.{R,py}` is no longer hand-copied, so a fix lands once and reaches
-every consumer (e.g. the leading-space `DSSBatch` fix and explicit `treatment_list`
+current package release v0.4.0), exactly as `dssatutils` was. The gridded tutorial
+consumes it through `dssat_main_pipeline.{R,py}`; SubField writes engine overlay
+configs and shells out to that sibling gridded engine; Bioenergy references it via
+`ENGINE_DIR`. Shared engine logic should not be hand-copied into application repos:
+a fix should land once and reach consumers by bumping pins or their selected engine
+environment (e.g. the leading-space `DSSBatch` fix and explicit `treatment_list`
 support). Consumers record release-tag pins; after shared-layer edits, commit and push
 the matching git tag before handing off or publishing an environment.
 
