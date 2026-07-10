@@ -8,7 +8,7 @@ points → weather + soil → FileX → run → parse workflow that consumer rep
 
 Consumers use this package through their selected gridded-engine environment:
 `DSSAT_Gridded_Run_Tutorial` imports it inside `dssat_main_pipeline.{py,R}`;
-`DSSAT-SubField-MILP-Analysis` shells out to that sibling gridded engine via
+`DSSAT_SubField_MILP_Analysis` shells out to that sibling gridded engine via
 `DSSAT_ENGINE_DIR`; and `Bioenergy_Model_Input_Comparison` points at the engine via
 `ENGINE_DIR`. Application repos should carry **zero local engine definitions**, so a
 fix lands once and reaches consumers when their pinned/shared engine environment is
@@ -79,11 +79,11 @@ Per [`CONVENTIONS.md`](CONVENTIONS.md) §6, the engine:
 
 ### Python
 ```bash
-pip install "git+https://github.com/alwinhopf/dssatengine.git@v0.4.0"
+pip install "git+https://github.com/alwinhopf/dssatengine.git@84b6e50895e7e2e2a4b02553d2705f4d879d269b"
 ```
 or pin in `requirements.txt`:
 ```
-dssatengine @ git+https://github.com/alwinhopf/dssatengine.git@v0.4.0
+dssatengine @ git+https://github.com/alwinhopf/dssatengine.git@84b6e50895e7e2e2a4b02553d2705f4d879d269b
 ```
 ```python
 from dssatengine import create_grid_points, load_existing_points, run_dssat
@@ -93,7 +93,7 @@ from dssatengine.engine import _run_one_point   # parallel-driver entry point
 ### R
 ```r
 # install.packages("remotes")
-remotes::install_github("alwinhopf/dssatengine@v0.4.0")
+remotes::install_github("alwinhopf/dssatengine@84b6e50895e7e2e2a4b02553d2705f4d879d269b")
 library(dssatengine)
 ```
 
@@ -102,7 +102,8 @@ library(dssatengine)
 Semantic versioning with git tags. **Consumers always pin to a tag** (`@vX.Y.Z`), never
 `main`, so upstream changes never break a pipeline until the pin is deliberately bumped.
 After editing the engine, commit and **push the matching tag** before relying on a clean
-install from GitHub. The current release is `v0.4.0`; per-consumer pins are tracked in
+tag install from GitHub. The package is currently version `0.4.0`, but the remote
+`v0.4.0` tag still needs to be pushed; per-consumer pins are tracked in
 [`DEPENDENCIES.md`](DEPENDENCIES.md), and the change history is in [`NEWS.md`](NEWS.md).
 
 ## Testing

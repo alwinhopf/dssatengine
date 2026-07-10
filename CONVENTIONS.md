@@ -9,7 +9,7 @@ require running the DSSAT pipelines to verify behavior is preserved.
 
 ## 1. Read-only shared dependencies — Policy (active)
 
-`dssatutils` and `DSSAT48` (and `dssat-csm-os`) are **consumed, never edited** by the
+`dssatutils` and `DSSAT48` (and `dssat_csm_os`) are **consumed, never edited** by the
 application repos. Bug fixes go upstream into the dependency and are released as a new
 tag; consumers then bump their pin. See [`DEPENDENCIES.md`](DEPENDENCIES.md).
 
@@ -38,13 +38,13 @@ names** (`dssatutils`, `dssat_lca_tea`'s `pipeline_*` pairs, the gridded engine)
 New repositories use **`snake_case`** with no spaces (e.g. `dssat_lca_tea`,
 `dssatutils`). Spaces in folder names break shell globs, `cd`, and many scripts.
 
-**Existing space-named repos are NOT auto-renamed.** Renaming
-(`DSSAT_Gridded_Run_Tutorial` → `dssat_gridded_run_tutorial`, etc.) is deferred to a
-deliberate, verified migration because:
+**Local workspace names use underscores, never spaces or hyphens.** Published remotes may
+still have their historical names, but local sibling checkout paths should use names like
+`DSSAT_Gridded_Run_Tutorial` and `DSSAT_SubField_MILP_Analysis`.
 
-- Cross-repo references exist by path (e.g. consumer scripts reference
-  `../DSSAT_Gridded_Run_Tutorial/`; `dssat_lca_tea/dssat_to_lca.{py,R}`; the HPC SLURM
-  scripts; `dssatutils/migrate/*.sh`). All would need simultaneous updating.
+- Cross-repo references should point at underscore local paths (for example
+  `../DSSAT_Gridded_Run_Tutorial/`). Remote URLs are the exception when the upstream
+  repository itself is still published with a hyphenated name.
 - The repos are independent git checkouts with their own remotes, RStudio projects, and
   the user's local terminal/IDE state — a rename touches the environment, not just files.
 

@@ -12,7 +12,7 @@ tag is bumped or a consumer is updated.
 | Dependency | Kind | Current version |
 |---|---|---|
 | `DSSAT48/dscsm048` | Compiled binary | DSSAT-CSM v4.8 (install in `DSSAT48/`) |
-| `dssat-csm-os` | Fortran source | open-source DSSAT-CSM tree (separate checkout) |
+| `dssat_csm_os` | Fortran source | open-source DSSAT-CSM tree (separate checkout) |
 | `dssatutils` | R + Python package | `0.4.0` (`pyproject.toml` + `DESCRIPTION`) |
 | `dssatengine` | R + Python package | `0.4.0` (`pyproject.toml` + `DESCRIPTION`) |
 
@@ -20,14 +20,14 @@ tag is bumped or a consumer is updated.
 
 | Repo | Language | Pin mechanism | Pinned to |
 |---|---|---|---|
-| DSSAT_Gridded_Run_Tutorial | Python | `environment.yml` git URL + `conda-lock.yml` resolved commits | `dssatutils@v0.4.0`, `dssatengine@v0.2.0` in `environment.yml`; lockfile resolves both to commits |
-| DSSAT_Gridded_Run_Tutorial | R | `setup_renv.R` / `renv.lock` | `dssatutils` and `dssatengine` from GitHub `main`, lockfile records package version `0.4.0` plus `RemoteSha` |
-| DSSAT-SubField-MILP-Analysis | Python | `requirements.txt` git URL | `dssatutils@v0.2.0`, `dssatengine@v0.2.0` |
+| DSSAT_Gridded_Run_Tutorial | Python | `environment.yml` git URL + `conda_lock.yml` resolved commits | `dssatutils@v0.4.0`; `dssatengine` pinned to verified 0.4.0 release commit `84b6e508...` until the matching tag is pushed |
+| DSSAT_Gridded_Run_Tutorial | R | `setup_renv.R` / `renv.lock` | `dssatutils@v0.4.0`; `dssatengine` pinned to verified 0.4.0 release commit `84b6e508...` until the matching tag is pushed; `USE_LOCAL_SHARED_PACKAGES=1` opts into sibling checkouts for development |
+| DSSAT_SubField_MILP_Analysis | Python | `requirements.txt` git URL | `dssatutils@v0.4.0`; `dssatengine` pinned to verified 0.4.0 release commit `84b6e508...` until the matching tag is pushed |
 | DSSAT_ML_Phenology_Prediction | R | `config.R` -> `DSSATUTILS_PATH` / `remotes::install_git` | `@v0.1.0` fallback |
-| Bioenergy_Model_Input_Comparison | R | `setup_renv.R` / `renv.lock` | `dssatutils@v0.4.0`, `dssatengine@v0.4.0` |
+| Bioenergy_Model_Input_Comparison | R | `setup_renv.R` / `renv.lock` | `dssatutils@v0.4.0`; `dssatengine` pinned to verified 0.4.0 release commit `84b6e508...` until the matching tag is pushed |
 | Bioenergy_Model_Input_Comparison | Python | via gridded engine / `ENGINE_DIR` | follows selected gridded-engine environment |
 | dssat_lca_tea | — | **does not import `dssatutils`** — consumes DSSAT output CSVs | n/a |
-| dssatcalibrator | Python | `pyproject.toml` optional extras | `[shared]` pins `dssatengine@v0.3.0`; `[acquire]` pins `dssatutils@v0.2.0` |
+| dssatcalibrator | Python | `pyproject.toml` optional extras | `[shared]` pins `dssatengine` to verified 0.4.0 release commit `84b6e508...` until the matching tag is pushed; `[acquire]` pins `dssatutils@v0.4.0` |
 | pythia | — | independent third-party DSSAT tool (not a consumer of the shared layers) | n/a |
 
 ## Pinning policy
@@ -36,6 +36,10 @@ Consumers should pin shared workspace packages to a release tag (`@vX.Y.Z`), not
 `main` or an editable sibling path. Editable local installs are fine for development,
 but publication or handoff environments should record the tag or resolved commit in
 the relevant lockfile.
+
+Temporary exception: `dssatengine` package code is version `0.4.0`, but the remote
+repository currently advertises no `v0.4.0` tag. Consumers that need `0.4.0`
+features are pinned to commit `84b6e508...` until that tag is pushed.
 
 After changing `dssatutils` or `dssatengine`, commit the shared-layer repo and push the
 matching tag before relying on a clean install from GitHub.
