@@ -7,12 +7,22 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "python"))
 
 import pytest
+import pandas as pd
 
-from dssatengine import normalize_treatment_list, run_dssat, write_dssbatch
+from dssatengine import (
+    LAT_COLUMN, LONG_COLUMN, POINT_ID_COLUMN, append_utf8,
+    normalize_treatment_list, run_dssat, safe_write_lines, write_dssbatch,
+    write_sequence_phase_file,
+)
+from dssatengine import engine as engine_module
 
 
 def test_contiguous_treatment_range():
     assert normalize_treatment_list(2, 4) == [2, 3, 4]
+
+
+def test_root_column_constants_match_r_public_surface():
+    assert (LAT_COLUMN, LONG_COLUMN, POINT_ID_COLUMN) == ("LAT", "LONG", "ID")
 
 
 def test_explicit_noncontiguous_treatment_list_preserves_order():
@@ -93,3 +103,65 @@ def test_run_dssat_raises_on_nonzero_exit(tmp_path):
         run_dssat(str(tmp_path), str(exe), "B")
 
     assert "fake dssat stdout" in (tmp_path / "dssat_B_stdout_stderr.log").read_text(encoding="utf-8")
+
+
+def test_experiment_run_uses_batch_mode_to_honour_treatment_selection(tmp_path, monkeypatch):
+    """Mode A ignores DSSBatch.V48 and runs every FileX treatment. Experiment
+    selection must therefore invoke mode B, as the R engine does."""
+    point_id = "00000001"
+    point_dir = tmp_path / point_id
+    point_dir.mkdir()
+    template = point_dir / "TEST0001.MZX"
+    template.write_text("*EXP.DETAILS\n", encoding="utf-8")
+
+    invocations = []
+
+    def fake_run_dssat(run_dir, exe, mode, **kwargs):
+        invocations.append((run_dir, exe, mode, kwargs))
+
+    summary = pd.DataFrame({
+        "RUNNO": [1], "TRNO": [3], "CR": ["MZ"], "LAT": [1.0],
+        "LONG": [2.0], "WSTA": [point_id], "SOIL_ID": [point_id],
+        "EXNAME": ["TEST0001"], "TNAM": ["selected"], "PDAT": [1984120],
+        "EDAT": [1984125], "HDAT": [1984250], "HYEAR": [1984],
+        "CWAM": [1000.0], "HWAM": [500.0], "BWAH": [0.0],
+        "CO2EM": [0.0], "N2OEM": [0.0],
+    })
+
+    monkeypatch.setattr(engine_module, "run_dssat", fake_run_dssat)
+    monkeypatch.setattr(engine_module, "_read_csv_safe", lambda path: summary.copy())
+    monkeypatch.setattr(engine_module, "_merge_supplemental", lambda path, runs: runs)
+
+    result = engine_module._run_simulation(
+        point_id, pd.Series({"LAT": 1.0, "LONG": 2.0}),
+        str(tmp_path), "MZ", template.name, str(template), "experiment",
+        3, 3, 1, 1, 1984, 1984, "/fake/dssat",
+    )
+
+    assert result is not None and result["treatment"].tolist() == [3]
+    assert len(invocations) == 1
+    assert invocations[0][2] == "B"
+    assert invocations[0][3] == {}
+
+
+def test_r_parity_file_helpers(tmp_path):
+    text = tmp_path / "text.txt"
+    safe_write_lines(["one", "two"], text, delay_sec=0)
+    append_utf8(text, "three")
+    assert text.read_text(encoding="utf-8") == "one\ntwo\nthree\n"
+
+    source = tmp_path / "source.SQX"
+    target = tmp_path / "target.SQX"
+    source.write_text(
+        "*TREATMENTS\n"
+        "@N R O C TNAME....................\n"
+        " 1 1 1 0 first\n"
+        " 2 1 1 0 second\n"
+        "*CULTIVARS\n",
+        encoding="utf-8",
+    )
+    write_sequence_phase_file(source, target, treatment=2, phase=1)
+    rendered = target.read_text(encoding="utf-8")
+    assert "second" in rendered and "first" not in rendered
+    with pytest.raises(ValueError, match="No sequence treatment row"):
+        write_sequence_phase_file(source, target, treatment=9, phase=1)

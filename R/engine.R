@@ -47,8 +47,8 @@ write_sequence_phase_file <- function(source_file, target_file, treatment, phase
     if (in_treatments && grepl("^\\s*[0-9]+\\s+[0-9]+\\s+", line)) {
       vals <- suppressWarnings(scan(text = line, what = integer(), nmax = 2, quiet = TRUE))
       if (length(vals) >= 2 && vals[1] == treatment && vals[2] == phase) {
-        out <- c(out, paste0(sprintf("%3d%1d %1d %1d ", 1L, 1L, 1L, 0L),
-                             substring(line, 11L)))
+        tail_text <- sub("^\\s*[0-9]+\\s+[0-9]+\\s+[0-9]+\\s+[0-9]+\\s+", "", line)
+        out <- c(out, paste0(" 1 1 1 0 ", tail_text))
         matched <- TRUE
       }
       next

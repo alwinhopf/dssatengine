@@ -16,6 +16,68 @@ LAT_COLUMN = "LAT"
 LONG_COLUMN = "LONG"
 POINT_ID_COLUMN = "ID"
 
+
+def append_utf8(path: str | os.PathLike, text) -> Path:
+    """Append one or more UTF-8 lines, matching the R helper."""
+    lines = [text] if isinstance(text, str) else list(text)
+    with open(path, "a", encoding="utf-8", newline="\n") as handle:
+        for line in lines:
+            handle.write(str(line).rstrip("\r\n") + "\n")
+    return Path(path)
+
+
+def safe_write_lines(text, path: str | os.PathLike,
+                     max_attempts: int = 5, delay_sec: float = 1) -> Path:
+    """Write UTF-8 lines with bounded retries, matching the R helper."""
+    import time
+    lines = [text] if isinstance(text, str) else list(text)
+    for attempt in range(1, int(max_attempts) + 1):
+        try:
+            with open(path, "w", encoding="utf-8", newline="\n") as handle:
+                for line in lines:
+                    handle.write(str(line).rstrip("\r\n") + "\n")
+            return Path(path)
+        except OSError as exc:
+            if attempt >= int(max_attempts):
+                raise OSError(
+                    f"Failed to write to {path} after {max_attempts} attempts: {exc}"
+                ) from exc
+            time.sleep(float(delay_sec))
+    raise AssertionError("unreachable")
+
+
+def write_sequence_phase_file(source_file: str | os.PathLike,
+                              target_file: str | os.PathLike,
+                              treatment: int, phase: int) -> Path:
+    """Write an SQX containing only one selected treatment/phase row."""
+    lines = Path(source_file).read_text(encoding="utf-8").splitlines()
+    output: list[str] = []
+    in_treatments = False
+    matched = False
+    row_pattern = re.compile(r"^\s*(\d+)\s+(\d+)\s+\d+\s+\d+\s+(.*)$")
+    for line in lines:
+        if line.startswith("*TREATMENTS"):
+            in_treatments = True
+            output.append(line)
+            continue
+        if in_treatments and line.startswith("*"):
+            in_treatments = False
+            if not output or output[-1]:
+                output.append("")
+            output.append(line)
+            continue
+        if in_treatments and (match := row_pattern.match(line)):
+            if int(match.group(1)) == int(treatment) and int(match.group(2)) == int(phase):
+                output.append(" 1 1 1 0 " + match.group(3))
+                matched = True
+            continue
+        output.append(line)
+    if not matched:
+        raise ValueError(
+            f"No sequence treatment row found for treatment={treatment}, phase={phase}"
+        )
+    return safe_write_lines(output, target_file)
+
 def _is_leap(year: int) -> bool:
     return (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0)
 
@@ -155,8 +217,9 @@ def extend_weather_repeat_single_ignore_partial(
         import warnings
         warnings.warn(f"No complete years in {path}; using first 365 rows as fallback.")
         chosen_ref = ref_end_year
-        last_full  = int(df["_year"].iloc[0])
-        df_trunc   = df.iloc[:365].copy()
+        n_take     = min(365, len(df))
+        df_trunc   = df.iloc[:n_take].copy()
+        last_full  = int(df_trunc["_year"].iloc[-1])
     else:
         prior      = [y for y in complete_years if y <= ref_end_year]
         chosen_ref = max(prior) if prior else max(complete_years)
@@ -443,11 +506,10 @@ def _build_result_rows(ID: str, summary: pd.DataFrame,
     """Assemble the result DataFrame from a summary table and the augmented
     master_runs table (mr). Shared by experiment and sequence mode.
 
-    *is_sequence* gates the mode-A treatment-labeling workaround: in sequence
-    (mode-Q) runs each call handles a single treatment, so TRNO is legitimately
-    constant across the sequence's runs and must be preserved as-is. The RUNNO
-    override applies only to experiment (mode-A) runs, where DSSAT reports
-    TRNO==1 for every treatment.
+    DSSAT's ``TRNO`` column is the authoritative treatment identifier in both
+    experiment and sequence output. ``RUNNO`` is only a fallback for malformed
+    output without ``TRNO``; inferring from a constant TRNO is unsafe because a
+    correctly selected single treatment is necessarily constant.
     """
     mr_idx = mr.set_index("RUNNO") if "RUNNO" in mr.columns else mr
 
@@ -468,19 +530,7 @@ def _build_result_rows(ID: str, summary: pd.DataFrame,
     somct_delta = somct_end - somct_start
 
     _trno = summary.get("TRNO")
-    if is_sequence:
-        # Sequence (mode-Q): each call handles a single treatment, so TRNO is
-        # legitimately constant across the sequence and must be preserved as-is.
-        treatment_col = _trno if _trno is not None else summary["RUNNO"]
-    else:
-        # Experiment (mode-A): DSSAT reports TRNO==1 for every treatment, so use
-        # RUNNO (which increments 1..N) as the treatment identifier.
-        _trno_all_one = (
-            _trno is not None
-            and hasattr(_trno, "nunique")
-            and _trno.nunique() == 1
-        )
-        treatment_col = summary["RUNNO"] if _trno_all_one else _trno
+    treatment_col = _trno if _trno is not None else summary["RUNNO"]
 
     return pd.DataFrame({
         "point_id":                               ID,
@@ -547,6 +597,16 @@ def _run_simulation(ID: str,
     exp_fname = f"{template_file_name.rsplit('.', 1)[0]}.{ext}"
     exp_path  = os.path.join(point_dir, exp_fname)
 
+    # Copy template into the point directory when the experiment file is absent
+    # (mirrors R engine's file.copy(template_file_path, ".") fallback).
+    if not os.path.isfile(exp_path):
+        if os.path.isfile(template_file_path):
+            import shutil
+            shutil.copy2(template_file_path, exp_path)
+        else:
+            log_run_error(f"Template file not found: {template_file_path}")
+            return None
+
     results_template = {
         "point_id": [], "run_number": [], "treatment": [], "crop_code": [],
         "latitude": [], "longitude": [], "weather_station_id": [],
@@ -575,7 +635,11 @@ def _run_simulation(ID: str,
         if run_mode == "experiment":
             batch_path = os.path.join(point_dir, "DSSBatch.V48")
             write_dssbatch(exp_path, trt_vec, batch_path, run_mode="experiment")
-            run_dssat(point_dir, dssat_exe_path, "A", filex=exp_fname)
+            # Mode B is the batch runner and therefore honours the explicit
+            # treatment rows written above. Mode A runs the FileX directly and
+            # silently executes every treatment, defeating treatment_start /
+            # treatment_end / treatment_list selection.
+            run_dssat(point_dir, dssat_exe_path, "B")
 
             summary = _read_csv_safe(os.path.join(point_dir, "summary.csv"))
             if summary is None or summary.empty:

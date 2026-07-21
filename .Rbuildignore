@@ -1,0 +1,7 @@
+^\.git$
+^\.gitignore$
+^\.gitattributes$
+^\.pytest_cache$
+^.*\.Rproj$
+^\.Rproj\.user$
+^R/\.Rhistory$

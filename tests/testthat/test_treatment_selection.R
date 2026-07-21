@@ -78,3 +78,19 @@ test_that("write_dssbatch_sequence places SQ in CSM's ROTNO columns 108-113", {
     expect_equal(substr(ln, 108, 113), sprintf("%6d", i))   # SQ/ROTNO
   }
 })
+
+test_that("file helpers match the Python public surface", {
+  text <- tempfile(); safe_write_lines(c("one", "two"), text, delay_sec = 0)
+  append_utf8(text, "three")
+  expect_equal(readLines(text, warn = FALSE), c("one", "two", "three"))
+
+  source <- tempfile(fileext = ".SQX"); target <- tempfile(fileext = ".SQX")
+  writeLines(c("*TREATMENTS", "@N R O C TNAME", " 1 1 1 0 first",
+               " 2 1 1 0 second", "*CULTIVARS"), source)
+  write_sequence_phase_file(source, target, treatment = 2L, phase = 1L)
+  rendered <- readLines(target, warn = FALSE)
+  expect_true(any(grepl("second", rendered, fixed = TRUE)))
+  expect_false(any(grepl("first", rendered, fixed = TRUE)))
+  expect_error(write_sequence_phase_file(source, target, 9L, 1L),
+               "No sequence treatment row")
+})

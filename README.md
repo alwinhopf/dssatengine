@@ -21,6 +21,8 @@ bumped.
 ## What's inside
 
 Both languages expose the same public surface (`R/engine.R`, `python/dssatengine/engine.py`):
+the root packages also export the shared `LAT_COLUMN`, `LONG_COLUMN`, and
+`POINT_ID_COLUMN` schema constants.
 
 | Function (same name in R and Python) | Role |
 |---|---|
@@ -57,7 +59,8 @@ run = read_run_directory("dssat_runs/0001", files=["Summary.OUT", "PlantGro.OUT"
 yields, daily = run["summary"], run["plantgro"]
 ```
 
-`run_simulation` supports two run modes — `experiment` (mode `A`) and `sequence` (mode `Q`) —
+`run_simulation` supports two run modes — `experiment` (mode `B`, using
+`DSSBatch.V48`) and `sequence` (mode `Q`) —
 and selects treatments either as a contiguous `treatment_start … treatment_end` range or as an
 explicit, possibly non-contiguous `treatment_list` (e.g. `[5, 1, 10]`, order-preserving and
 deduplicated). The legacy `treatments` argument is deprecated and may not be combined with
