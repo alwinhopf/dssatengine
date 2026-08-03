@@ -68,13 +68,31 @@ write_sequence_phase_file <- function(source_file, target_file, treatment, phase
 #'
 #' @export
 create_grid_points <- function(boundary_shape, spacing_meters, output_path) {
-  boundary_projected <- sf::st_transform(boundary_shape, 5070)
+  if (!is.numeric(spacing_meters) || length(spacing_meters) != 1L ||
+      is.na(spacing_meters) || spacing_meters <= 0) {
+    stop("spacing_meters must be a positive distance in metres", call. = FALSE)
+  }
+  if (!nrow(boundary_shape) || is.na(sf::st_crs(boundary_shape))) {
+    stop("boundary_shape must be non-empty and have a defined CRS", call. = FALSE)
+  }
+  ll <- sf::st_transform(boundary_shape, 4326)
+  bb <- sf::st_bbox(ll)
+  if ((bb$xmax - bb$xmin) <= 12 && (bb$ymax - bb$ymin) <= 20) {
+    center <- sf::st_coordinates(sf::st_centroid(sf::st_union(ll)))[1, ]
+    zone <- max(1L, min(60L, floor((center[1] + 180) / 6) + 1L))
+    metric_epsg <- if (center[2] >= 0) 32600L + zone else 32700L + zone
+  } else {
+    metric_epsg <- 6933L
+  }
+  boundary_projected <- sf::st_transform(boundary_shape, metric_epsg)
   bbox <- sf::st_bbox(boundary_projected)
   x_coords <- seq(floor(bbox$xmin), ceiling(bbox$xmax), by = spacing_meters)
   y_coords <- seq(floor(bbox$ymin), ceiling(bbox$ymax), by = spacing_meters)
   full_grid_df <- expand.grid(X = x_coords, Y = y_coords)
-  grid_points_projected <- sf::st_as_sf(full_grid_df, coords = c("X", "Y"), crs = 5070)
-  points_in_boundary_projected <- sf::st_filter(grid_points_projected, boundary_projected)
+  grid_points_projected <- sf::st_as_sf(full_grid_df, coords = c("X", "Y"), crs = metric_epsg)
+  points_in_boundary_projected <- sf::st_filter(
+    grid_points_projected, boundary_projected, .predicate = sf::st_intersects
+  )
   
   if (nrow(points_in_boundary_projected) == 0) stop("STEP 0 FAILED: No grid points created.")
   
@@ -96,11 +114,16 @@ load_existing_points <- function(input_path, output_path,
                                  lon_col = "LONG") {
   if (!file.exists(input_path)) stop(sprintf("Existing point shapefile not found at: %s", input_path))
   pts <- sf::st_read(input_path, quiet = TRUE)
+  if (is.na(sf::st_crs(pts))) stop("Input spatial data must have a defined CRS", call. = FALSE)
   
   gtype <- unique(as.character(sf::st_geometry_type(pts)))
-  if (!all(gtype %in% c("POINT", "MULTIPOINT"))) {
-    message(sprintf("Existing shapefile geometry is [%s]; converting to centroids.", paste(gtype, collapse = ", ")))
-    pts <- sf::st_centroid(pts)
+  if (any(gtype == "MULTIPOINT")) {
+    pts <- suppressWarnings(sf::st_cast(pts, "POINT"))
+    gtype <- unique(as.character(sf::st_geometry_type(pts)))
+  }
+  if (!all(gtype == "POINT")) {
+    message(sprintf("Existing shapefile geometry is [%s]; converting to interior points.", paste(gtype, collapse = ", ")))
+    pts <- sf::st_point_on_surface(pts)
   }
   
   pts_ll <- sf::st_transform(pts, 4326)
@@ -171,31 +194,32 @@ extend_weather_repeat_single_ignore_partial <- function(f,
   doys_present  <- raw_dates %% 1000
   d$YEAR <- years_present
   d$DOY  <- doys_present
+
+  if (ref_end_year < ref_start_year) {
+    stop("ref_end_year must be greater than or equal to ref_start_year", call. = FALSE)
+  }
   
   years_unique <- sort(unique(d$YEAR))
   complete_years <- c()
   for (yr in years_unique) {
     expected_days <- if (is_leap(yr)) 366 else 365
-    actual_days <- sum(d$YEAR == yr, na.rm = TRUE)
-    if (actual_days == expected_days) complete_years <- c(complete_years, yr)
-  }
-  
-  if (length(complete_years) > 0) {
-    if (ref_end_year %in% complete_years) {
-      chosen_ref_year <- ref_end_year
-    } else {
-      prior_candidates <- complete_years[complete_years <= ref_end_year]
-      chosen_ref_year <- if (length(prior_candidates) > 0) max(prior_candidates) else max(complete_years)
+    actual_doys <- d$DOY[d$YEAR == yr & !is.na(d$DOY)]
+    if (length(actual_doys) == expected_days &&
+        !anyDuplicated(actual_doys) &&
+        identical(sort(as.integer(actual_doys)), seq_len(expected_days))) {
+      complete_years <- c(complete_years, yr)
     }
-    last_full_year <- max(complete_years)
-    d_trunc <- d[d$YEAR <= last_full_year, , drop = FALSE]
-  } else {
-    warning(sprintf("No complete years found in %s; falling back to first 365 rows.", f))
-    chosen_ref_year <- ref_end_year
-    n_take <- min(365, nrow(d))
-    d_trunc <- d[1:n_take, , drop = FALSE]
-    last_full_year <- get_year_from_code(as.integer(d_trunc[nrow(d_trunc), 1]))
   }
+
+  eligible <- complete_years[complete_years >= ref_start_year & complete_years <= ref_end_year]
+  if (length(eligible) == 0L) {
+    stop(sprintf("No complete, duplicate-free reference year in %d-%d: %s",
+                 ref_start_year, ref_end_year, f), call. = FALSE)
+  }
+  chosen_ref_year <- max(eligible)
+  last_full_year <- max(complete_years)
+  # Ignore a trailing partial year instead of retaining it ahead of repeated data.
+  d_trunc <- d[d$YEAR <= last_full_year, , drop = FALSE]
   
   canonical_colnames <- names(d_trunc)
   canonical_body_colnames <- setdiff(canonical_colnames, c("YEAR", "DOY"))
@@ -225,32 +249,7 @@ extend_weather_repeat_single_ignore_partial <- function(f,
     }
   }
   
-  if (year_format == "YYDDD") {
-    yy_short <- chosen_ref_year %% 100
-    ref_start_code <- yy_short * 1000
-    ref_end_code   <- (yy_short + 1) * 1000
-  } else {
-    ref_start_code <- chosen_ref_year * 1000
-    ref_end_code   <- (chosen_ref_year + 1) * 1000
-  }
-  ref_block <- d[d[,1] > ref_start_code & d[,1] < ref_end_code, , drop = FALSE]
-  
-  if (nrow(ref_block) == 0 && last_full_year %in% years_unique) {
-    if (year_format == "YYDDD") {
-      yy2 <- last_full_year %% 100
-      ref_start_code <- yy2 * 1000
-      ref_end_code   <- (yy2 + 1) * 1000
-    } else {
-      ref_start_code <- last_full_year * 1000
-      ref_end_code   <- (last_full_year + 1) * 1000
-    }
-    ref_block <- d[d[,1] > ref_start_code & d[,1] < ref_end_code, , drop = FALSE]
-  }
-  if (nrow(ref_block) == 0) {
-    ref_block <- d[1:min(365, nrow(d)), , drop = FALSE]
-    tmp_first_year <- get_year_from_code(as.integer(ref_block[1,1]))
-    chosen_ref_year <- tmp_first_year
-  }
+  ref_block <- d[d$YEAR == chosen_ref_year, , drop = FALSE]
   
   ref_block_body <- coerce_block_to_canonical(ref_block, src_name = "ref_block")
   base_df <- d_trunc[, canonical_body_colnames, drop = FALSE]
@@ -281,16 +280,10 @@ extend_weather_repeat_single_ignore_partial <- function(f,
           idx_rows[i] <- candidates[1]
         } else if (mm == "02-29") {
           c2 <- which(ref_mmdd == "02-28")
-          if (length(c2) > 0) idx_rows[i] <- c2[1]
-          else idx_rows[i] <- 1
+          if (length(c2) == 0L) stop("Reference year lacks February 28", call. = FALSE)
+          idx_rows[i] <- c2[1]
         } else {
-          found <- FALSE
-          for (k in 1:5) {
-            prev_mm <- format(tgt_dates[i] - k, "%m-%d")
-            pidx <- which(ref_mmdd == prev_mm)
-            if (length(pidx) > 0) { idx_rows[i] <- pidx[1]; found <- TRUE; break }
-          }
-          if (!found) idx_rows[i] <- 1
+          stop(sprintf("Complete reference year unexpectedly lacks calendar day %s", mm), call. = FALSE)
         }
       }
       
@@ -319,9 +312,12 @@ extend_weather_repeat_single_ignore_partial <- function(f,
     formatted_body <- date_col_str
   }
   
-  con <- file(f, open = "w", encoding = "UTF-8")
-  on.exit(close(con), add = TRUE)
-  writeLines(c(header_lines, formatted_body), con = con)
+  partial <- tempfile(pattern = paste0(basename(f), "."), tmpdir = dirname(f), fileext = ".partial")
+  on.exit(if (file.exists(partial)) unlink(partial), add = TRUE)
+  writeLines(c(header_lines, formatted_body), con = partial, useBytes = TRUE)
+  if (!file.rename(partial, f)) {
+    stop(sprintf("Could not atomically replace weather file: %s", f), call. = FALSE)
+  }
   return(TRUE)
 }
 
@@ -359,6 +355,9 @@ write_dssbatch <- function(experiment_file, trtno_list,
     "@ FILEX                                                                                        TRTNO RP SQ OP CO"
   )
   fname <- basename(experiment_file)
+  if (nchar(fname, type = "bytes") > 92L || !identical(iconv(fname, to = "ASCII"), fname) || grepl("[\r\n]", fname)) {
+    stop("DSSAT FileX basename must be ASCII and at most 92 characters", call. = FALSE)
+  }
   trt_vec <- as.integer(unlist(trtno_list, use.names = FALSE))
   lines <- vapply(trt_vec, function(trt) {
     sprintf("%-93s%6d  1  0  1  0", fname, trt)
@@ -374,6 +373,10 @@ write_dssbatch_sequence <- function(experiment_file, trt,
                                     seq_start, seq_end,
                                     batch_path) {
   fname <- basename(experiment_file)
+  if (nchar(fname, type = "bytes") > 92L || !identical(iconv(fname, to = "ASCII"), fname) || grepl("[\r\n]", fname)) {
+    stop("DSSAT FileX basename must be ASCII and at most 92 characters", call. = FALSE)
+  }
+  if (seq_end < seq_start) stop("seq_end must be >= seq_start", call. = FALSE)
   header <- c(
     "$BATCH(SEQUENCE)",
     "!",
@@ -419,13 +422,19 @@ normalize_treatment_list <- function(treatment_start, treatment_end,
     has_list <- TRUE
   }
   if (has_list) {
-    trt_vec <- suppressWarnings(as.integer(unlist(treatment_list, use.names = FALSE)))
+    raw <- suppressWarnings(as.numeric(unlist(treatment_list, use.names = FALSE)))
+    if (any(!is.finite(raw)) || any(raw != floor(raw))) {
+      stop("Treatment IDs must be finite integers.", call. = FALSE)
+    }
+    trt_vec <- as.integer(raw)
   } else {
-    start <- suppressWarnings(as.integer(treatment_start)[1])
-    end <- suppressWarnings(as.integer(treatment_end)[1])
-    if (is.na(start) || is.na(end)) {
+    raw_start <- suppressWarnings(as.numeric(treatment_start)[1])
+    raw_end <- suppressWarnings(as.numeric(treatment_end)[1])
+    if (!is.finite(raw_start) || !is.finite(raw_end) ||
+        raw_start != floor(raw_start) || raw_end != floor(raw_end)) {
       stop("treatment_start and treatment_end must be valid integers.", call. = FALSE)
     }
+    start <- as.integer(raw_start); end <- as.integer(raw_end)
     if (end < start) {
       stop(sprintf("treatment_end (%d) must be >= treatment_start (%d).", end, start),
            call. = FALSE)
@@ -519,15 +528,18 @@ run_simulation <- function(ID,
                            cleanup_run_folders = FALSE,
                            points_df = NULL,
                            treatment_list = NULL,
-                           treatments = NULL) {
+                           treatments = NULL,
+                           timeout = 0) {
+  old_dssat_option <- getOption("DSSAT.CSM")
   options(DSSAT.CSM = dssat_exe_path)
+  on.exit(options(DSSAT.CSM = old_dssat_option), add = TRUE)
 
   point_dir <- file.path(dssat_run_dir, ID)
   if (!dir.exists(point_dir)) dir.create(point_dir, recursive = TRUE)
   
   orig_wd <- getwd()
   tryCatch({ setwd(point_dir) }, error = function(e) return(NULL))
-  on.exit(setwd(orig_wd))
+  on.exit(setwd(orig_wd), add = TRUE)
 
   # Per-point error log. message() from parLapply workers is NEVER shown in the
   # parent console, so a failing point would otherwise vanish silently (no
@@ -539,24 +551,17 @@ run_simulation <- function(ID,
     message(line)  # still emit for interactive / sequential runs
   }
 
-  trt_vec <- tryCatch(
-    normalize_treatment_list(treatment_start, treatment_end, treatment_list, treatments),
-    error = function(e) {
-      log_run_error(sprintf("FATAL: %s", conditionMessage(e)))
-      integer(0)
-    }
-  )
-  if (!length(trt_vec)) return(NULL)
+  trt_vec <- normalize_treatment_list(treatment_start, treatment_end, treatment_list, treatments)
 
   template_ext <- tools::file_ext(template_file_name)
-  experiment_file <- list.files(pattern = paste0("\\.", template_ext, "$"))[1]
-  if (is.na(experiment_file)) {
+  experiment_file <- basename(template_file_name)
+  if (!file.exists(experiment_file)) {
     # Copy from template path if not present in folder
     if (file.exists(template_file_path)) {
-      file.copy(template_file_path, ".", overwrite = TRUE)
-      experiment_file <- basename(template_file_path)
+      copied <- file.copy(template_file_path, experiment_file, overwrite = TRUE)
+      if (!copied) stop("Failed to copy requested FileX template", call. = FALSE)
     } else {
-      return(NULL)
+      stop(sprintf("Template file not found: %s", template_file_path), call. = FALSE)
     }
   }
   
@@ -591,7 +596,7 @@ run_simulation <- function(ID,
     if (run_mode == "experiment") {
       batch_file_path <- file.path(getwd(), 'DSSBatch.V48')
       write_dssbatch(experiment_file, trt_vec, batch_file_path, run_mode = "experiment")
-      run_dssat(".", dssat_exe_path, "B")
+      run_dssat(".", dssat_exe_path, "B", timeout = timeout)
 
       if (!file.exists('summary.csv')) {
         has_summary_out <- file.exists("Summary.OUT")
@@ -605,17 +610,7 @@ run_simulation <- function(ID,
                                                   locale = readr::locale(encoding = "UTF-8")))
       
       if (is.null(summary) || nrow(summary) == 0) {
-        treatments_vec <- trt_vec
-        n_years <- (weather_end_year - weather_start_year)
-        n_runs <- length(treatments_vec) * n_years
-        summary <- dplyr::tibble(
-          RUNNO = 1:n_runs, TRNO = rep(treatments_vec, each = n_years),
-          PYEAR = rep(weather_start_year:(weather_end_year - 1), times = length(treatments_vec)),
-          CR = NA_character_, LAT = NA_real_, LONG = NA_real_, WSTA = NA_character_,
-          SOIL_ID = NA_character_, EXNAME = NA_character_, TNAM = NA_character_,
-          PDAT = NA_real_, EDAT = NA_real_, HDAT = NA_real_, HYEAR = NA_real_,
-          CWAM = NA_real_, HWAM = NA_real_, BWAH = NA_real_, CO2EM = NA_real_, N2OEM = NA_real_
-        )
+        stop("DSSAT produced an empty summary.csv; no result rows can be inferred.", call. = FALSE)
       } else {
         summary$PYEAR <- substr(summary$PDAT, 1, 4)
       }
@@ -661,10 +656,9 @@ run_simulation <- function(ID,
       for (trt in trt_vec) {
         batch_file_path <- file.path(getwd(), 'DSSBatch.V48')
         write_dssbatch_sequence(experiment_file, trt, sequence_start, sequence_end, batch_file_path)
-        run_dssat(".", dssat_exe_path, "Q")
+        run_dssat(".", dssat_exe_path, "Q", timeout = timeout)
         if (!file.exists('summary.csv')) {
-          log_run_error(sprintf("trt %d: DSSAT completed but produced no 'summary.csv' (FMOPT must be 'C'; see ERROR.OUT, WARNING.OUT, INFO.OUT, dssat_Q_stdout_stderr.log).", trt))
-          next
+          stop(sprintf("trt %d: DSSAT produced no summary.csv", trt), call. = FALSE)
         }
         summary <- suppressWarnings(readr::read_csv('summary.csv', show_col_types = FALSE,
                                                     locale = readr::locale(encoding = "UTF-8")))
@@ -709,6 +703,8 @@ run_simulation <- function(ID,
           results <- rbind(results, seq_results)
         }
       } 
+    } else {
+      stop("run_mode must be either 'experiment' or 'sequence'", call. = FALSE)
     }
     
     # Coordinate overwrite fallback
@@ -735,6 +731,6 @@ run_simulation <- function(ID,
     
   }, error = function(e) {
     log_run_error(sprintf("FATAL: %s", conditionMessage(e)))
-    return(NULL)
+    stop(e)
   })
 }

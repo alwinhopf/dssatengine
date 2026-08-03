@@ -38,6 +38,12 @@ def test_empty_treatment_selection_fails_clearly():
         raise AssertionError("Expected invalid treatment range to fail")
 
 
+@pytest.mark.parametrize("value", [1.9, "abc", float("nan")])
+def test_invalid_explicit_treatment_is_not_silently_coerced(value):
+    with pytest.raises(ValueError, match="integer"):
+        normalize_treatment_list(1, 1, treatment_list=[value])
+
+
 def test_write_dssbatch_uses_explicit_treatments(tmp_path):
     batch = tmp_path / "DSSBatch.V48"
     write_dssbatch("CARINATA1984.SQX", [1, 5, 10], str(batch), run_mode="experiment")

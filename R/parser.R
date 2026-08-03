@@ -43,7 +43,8 @@ yyddd_to_date <- function(code) {
       s <- formatC(s, width = 7, flag = "0")
       year <- as.integer(substr(s, 1, 4)); doy <- as.integer(substr(s, 5, 7))
     }
-    if (is.na(doy) || doy < 1 || doy > 366) return(as.Date(NA))
+    max_doy <- if ((year %% 4L == 0L && year %% 100L != 0L) || year %% 400L == 0L) 366L else 365L
+    if (is.na(doy) || doy < 1 || doy > max_doy) return(as.Date(NA))
     as.Date(paste0(year, "-01-01")) + (doy - 1)
   }
   out <- as.Date(vapply(code, function(x) as.numeric(one(x)), numeric(1)),
@@ -69,7 +70,8 @@ yyddd_to_date <- function(code) {
     yr <- suppressWarnings(as.integer(df$YEAR))
     doy <- suppressWarnings(as.integer(df$DOY))
     d <- rep(as.Date(NA), nrow(df))
-    ok <- !is.na(yr) & !is.na(doy) & doy >= 1 & doy <= 366
+    leap <- (yr %% 4L == 0L & yr %% 100L != 0L) | yr %% 400L == 0L
+    ok <- !is.na(yr) & !is.na(doy) & doy >= 1 & doy <= ifelse(leap, 366L, 365L)
     d[ok] <- as.Date(paste0(yr[ok], "-01-01")) + (doy[ok] - 1)
     df$date <- d
   }
@@ -341,7 +343,7 @@ parse_dssat_output <- function(path, add_date = TRUE) {
 #' With `files` unset, reads every tabular `.OUT` (skipping reports/balances)
 #' plus, when `include_csv` (default), the `FMOPT='C'` `.csv` twins whose stem
 #' isn't already covered by a `.OUT` — so a CSV-mode run is read as fully as a
-#' text run. When both forms exist the `.OUT` wins.
+#' text run. When both forms exist the structurally safer CSV twin wins.
 #' @export
 read_run_directory <- function(run_dir, files = NULL, add_date = TRUE,
                                include_csv = TRUE) {
@@ -352,10 +354,10 @@ read_run_directory <- function(run_dir, files = NULL, add_date = TRUE,
                             !(tolower(all) %in% .NON_TABULAR)])
     candidates <- out_files
     if (include_csv) {
-      out_stems <- tolower(tools::file_path_sans_ext(out_files))
-      csv_files <- all[grepl("\\.csv$", all, ignore.case = TRUE) &
-                         !(tolower(tools::file_path_sans_ext(all)) %in% out_stems)]
-      candidates <- c(candidates, sort(csv_files))
+      csv_files <- sort(all[grepl("\\.csv$", all, ignore.case = TRUE)])
+      csv_stems <- tolower(tools::file_path_sans_ext(csv_files))
+      out_files <- out_files[!(tolower(tools::file_path_sans_ext(out_files)) %in% csv_stems)]
+      candidates <- c(out_files, csv_files)
     }
   } else {
     candidates <- files

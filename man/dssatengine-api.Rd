@@ -33,5 +33,17 @@ argument examples.
 \details{
 The package exposes matching R and Python entry points. Treatment selection is
 normalized before batch construction; experiment batches run in DSSAT mode B
-and sequence batches in mode Q.
+and sequence batches in mode Q. Weather extension requires a complete,
+duplicate-free reference year inside the requested interval and writes through
+an atomic replacement. Missing DSSAT numeric sentinels are returned as missing
+values; invalid calendar dates and failed or empty runs are reported explicitly.
+}
+\value{
+Grid helpers return spatial point objects; parsers return data frames; directory
+readers return named lists of data frames. Writers and run helpers return their
+created path or result table and signal invalid input or execution failure.
+}
+\examples{
+yyddd_to_date(c(23001, 2023365, -99))
+normalize_treatment_list(c(1, 3, 3))
 }

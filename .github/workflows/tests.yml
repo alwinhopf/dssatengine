@@ -8,7 +8,27 @@ on:
 
 jobs:
   python:
-    name: Python (${{ matrix.os }})
+    name: Python ${{ matrix.python-version }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install package and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Run Python tests
+        run: python -m pytest -q
+
+  r:
+    name: R (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -16,12 +36,15 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: r-lib/actions/setup-r@v2
         with:
-          python-version: "3.11"
-      - name: Install package and test dependencies
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::testthat, any::pkgload, github::alwinhopf/dssatutils@v0.4.0
+          needs: check
+      - name: Run R tests
+        shell: Rscript {0}
         run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
-      - name: Run Python tests
-        run: python -m pytest -q
+          pkgload::load_all('.', quiet = TRUE)
+          testthat::test_dir('tests/testthat', reporter = 'summary', stop_on_failure = TRUE)

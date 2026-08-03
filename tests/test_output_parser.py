@@ -35,6 +35,10 @@ def test_yyddd_to_date_missing(bad):
     assert pd.isna(yyddd_to_date(bad))
 
 
+def test_nonleap_day_366_is_invalid():
+    assert pd.isna(yyddd_to_date(2023366))
+
+
 # --------------------------------------------------------------------------- #
 #  Time-series: PlantGro.OUT                                                   #
 # --------------------------------------------------------------------------- #
@@ -250,6 +254,9 @@ def test_multitreatment_blocks_are_split():
     # but Plantsum.OUT from the 6-treatment run carries all six
     ps = parse_timeseries(FIX / "Plantsum.OUT")
     assert not ps.empty and len(ps) == 6
+    assert ps["RUN"].tolist() == [1, 2, 3, 4, 5, 6]
+    assert ps["REP"].tolist() == [1, 1, 1, 1, 1, 1]
+    assert ps.loc[0, "TNAME"] == "DRYLAND  - 0 KG N/HA"
 
 
 def test_overview_is_skipped_as_report():

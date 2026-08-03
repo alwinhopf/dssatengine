@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import re
 import math
@@ -84,20 +86,34 @@ def _is_leap(year: int) -> bool:
 def create_grid_points(boundary_shape: gpd.GeoDataFrame,
                        spacing_m: int,
                        output_path: str) -> gpd.GeoDataFrame:
-    ALBERS_CRS = "EPSG:5070"   # USA Contiguous Albers Equal Area (metres)
+    if spacing_m <= 0:
+        raise ValueError("spacing_m must be a positive distance in metres")
+    if boundary_shape.empty or boundary_shape.crs is None:
+        raise ValueError("boundary_shape must be non-empty and have a defined CRS")
+    geographic = boundary_shape.to_crs("EPSG:4326")
+    min_lon, min_lat, max_lon, max_lat = geographic.total_bounds
+    # A local UTM CRS gives metre-accurate spacing for regional domains.  UTM
+    # is unsuitable for multi-zone/continental domains, where the global
+    # equal-area EASE-Grid projection is the reproducible fallback.
+    if (max_lon - min_lon) <= 12 and (max_lat - min_lat) <= 20:
+        metric_crs = geographic.estimate_utm_crs()
+    else:
+        metric_crs = "EPSG:6933"
+    if metric_crs is None:
+        metric_crs = "EPSG:6933"
 
-    projected = boundary_shape.to_crs(ALBERS_CRS)
+    projected = boundary_shape.to_crs(metric_crs)
     minx, miny, maxx, maxy = projected.total_bounds
 
     xs = np.arange(math.floor(minx), math.ceil(maxx) + spacing_m, spacing_m)
     ys = np.arange(math.floor(miny), math.ceil(maxy) + spacing_m, spacing_m)
     grid_pts = gpd.GeoDataFrame(
         geometry=[Point(x, y) for y in ys for x in xs],
-        crs=ALBERS_CRS,
+        crs=metric_crs,
     )
 
     inside = gpd.sjoin(grid_pts, projected[["geometry"]], how="inner",
-                       predicate="within").drop_duplicates("geometry")
+                       predicate="intersects").drop_duplicates("geometry")
 
     if inside.empty:
         raise RuntimeError("STEP 0 FAILED: No grid points created inside boundary.")
@@ -117,10 +133,18 @@ def load_existing_points(input_path: str, output_path: str) -> gpd.GeoDataFrame:
 
     pts = gpd.read_file(input_path)
 
-    if not all(pts.geometry.geom_type.isin(["Point", "MultiPoint"])):
+    if pts.crs is None:
+        raise ValueError("Input spatial data must have a defined CRS")
+    if any(pts.geometry.geom_type == "MultiPoint"):
+        pts = pts.explode(index_parts=False, ignore_index=True)
+    if not all(pts.geometry.geom_type == "Point"):
         print(f"Geometry is [{pts.geometry.geom_type.unique()}]; converting to centroids.")
         pts = pts.copy()
-        pts["geometry"] = pts.geometry.centroid
+        metric_crs = pts.to_crs("EPSG:4326").estimate_utm_crs() or "EPSG:6933"
+        pts = pts.to_crs(metric_crs)
+        # point_on_surface is guaranteed to remain inside polygons, unlike a
+        # centroid of a concave or multipart field.
+        pts["geometry"] = pts.geometry.representative_point()
 
     pts = pts.to_crs("EPSG:4326").reset_index(drop=True)
     pts[LAT_COLUMN]  = pts.geometry.y.round(6)
@@ -207,24 +231,24 @@ def extend_weather_repeat_single_ignore_partial(
     df["_year"] = df.iloc[:, 0].apply(lambda x: _get_year_doy(x, year_format)[0])
     df["_doy"]  = df.iloc[:, 0].apply(lambda x: _get_year_doy(x, year_format)[1])
 
-    year_counts    = df.groupby("_year").size()
-    complete_years = [
-        yr for yr, cnt in year_counts.items()
-        if cnt == (366 if _is_leap(yr) else 365)
-    ]
+    if ref_end_year < ref_start_year:
+        raise ValueError("ref_end_year must be >= ref_start_year")
+    complete_years = []
+    for year, group in df.groupby("_year"):
+        expected = set(range(1, 367 if _is_leap(int(year)) else 366))
+        actual = set(pd.to_numeric(group["_doy"], errors="coerce").dropna().astype(int))
+        if actual == expected and len(group) == len(expected):
+            complete_years.append(int(year))
 
-    if not complete_years:
-        import warnings
-        warnings.warn(f"No complete years in {path}; using first 365 rows as fallback.")
-        chosen_ref = ref_end_year
-        n_take     = min(365, len(df))
-        df_trunc   = df.iloc[:n_take].copy()
-        last_full  = int(df_trunc["_year"].iloc[-1])
-    else:
-        prior      = [y for y in complete_years if y <= ref_end_year]
-        chosen_ref = max(prior) if prior else max(complete_years)
-        last_full  = max(complete_years)
-        df_trunc   = df[df["_year"] <= last_full].copy()
+    eligible = [y for y in complete_years if ref_start_year <= y <= ref_end_year]
+    if not eligible:
+        raise ValueError(
+            f"No complete, duplicate-free reference year in {ref_start_year}-{ref_end_year}: {path}"
+        )
+    chosen_ref = max(eligible)
+    last_full = max(complete_years)
+    # Drop a trailing partial year before appending repeated complete years.
+    df_trunc = df[df["_year"] <= last_full].copy()
 
     if last_full >= target_end_year:
         return True   # already covers target
@@ -233,7 +257,7 @@ def extend_weather_repeat_single_ignore_partial(
 
     ref_block = df[df["_year"] == chosen_ref][body_cols].copy().reset_index(drop=True)
     if ref_block.empty:
-        ref_block = df_trunc[body_cols].iloc[:365].copy().reset_index(drop=True)
+        raise ValueError(f"Reference year {chosen_ref} is absent from {path}")
 
     ref_doys        = ref_block.iloc[:, 0].apply(lambda x: _get_year_doy(x, year_format)[1])
     ref_yr_in_block = _get_year_doy(ref_block.iloc[0, 0], year_format)[0]
@@ -286,9 +310,16 @@ def extend_weather_repeat_single_ignore_partial(
     rows_out = date_strs.str.rjust(7) + val_strs.apply(lambda r: "".join(r.values), axis=1)
     rows_out = rows_out.str.replace(" -99.0", "  -99")
 
-    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+    import tempfile
+    target = Path(path)
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", newline="\n", dir=target.parent,
+        prefix=target.name + ".", suffix=".partial", delete=False,
+    ) as fh:
+        partial = Path(fh.name)
         fh.write("\n".join(header_lines) + "\n")
         fh.write("\n".join(rows_out.tolist()) + "\n")
+    os.replace(partial, target)
 
     if verbose:
         print(f"Wrote extended file: {path} up to {target_end_year}")
@@ -304,6 +335,8 @@ def write_dssbatch(experiment_file: str, trtno_list: list,
         "TRTNO RP SQ OP CO\n"
     )
     fname = os.path.basename(experiment_file)
+    if len(fname) > 92 or not fname.isascii() or any(c in fname for c in "\r\n"):
+        raise ValueError("DSSAT FileX basename must be ASCII and at most 92 characters")
     lines = []
     for trt in trtno_list:
         # FileX must start at column 1 (no leading space): CSM.for computes
@@ -321,6 +354,10 @@ def write_dssbatch_sequence(experiment_file: str, trt: int,
                             seq_start: int, seq_end: int,
                             batch_path: str) -> None:
     fname  = os.path.basename(experiment_file)
+    if len(fname) > 92 or not fname.isascii() or any(c in fname for c in "\r\n"):
+        raise ValueError("DSSAT FileX basename must be ASCII and at most 92 characters")
+    if seq_end < seq_start:
+        raise ValueError("seq_end must be >= seq_start")
     header = (
         "$BATCH(SEQUENCE)\n"
         "!\n"
@@ -375,9 +412,12 @@ def normalize_treatment_list(treatment_start: int,
     trt_vec: list[int] = []
     for value in raw_values:
         try:
-            trt = int(value)
+            numeric = float(value)
         except (TypeError, ValueError):
-            continue
+            raise ValueError(f"Treatment ID {value!r} is not an integer") from None
+        if not math.isfinite(numeric) or not numeric.is_integer():
+            raise ValueError(f"Treatment ID {value!r} is not an integer")
+        trt = int(numeric)
         if trt < 1:
             raise ValueError("Treatment IDs must be positive integers.")
         if trt not in seen:
@@ -441,6 +481,10 @@ def _read_csv_safe(path: str) -> Optional[pd.DataFrame]:
         return None
     try:
         df = pd.read_csv(path, index_col=False, encoding="utf-8")
+        for column in df.columns:
+            numeric = pd.to_numeric(df[column], errors="coerce")
+            if numeric.notna().any() or df[column].isna().all():
+                df[column] = numeric.mask(np.isclose(numeric, -99.0))
         return df if not df.empty else None
     except Exception:
         return None
@@ -578,7 +622,8 @@ def _run_simulation(ID: str,
                     weather_end_year: int,
                     dssat_exe_path: str,
                     treatment_list: Optional[list] = None,
-                    treatments: Optional[list] = None) -> Optional[pd.DataFrame]:
+                    treatments: Optional[list] = None,
+                    timeout: Optional[float] = None) -> pd.DataFrame:
     point_dir = os.path.join(dssat_run_dir, ID)
     os.makedirs(point_dir, exist_ok=True)
 
@@ -605,7 +650,7 @@ def _run_simulation(ID: str,
             shutil.copy2(template_file_path, exp_path)
         else:
             log_run_error(f"Template file not found: {template_file_path}")
-            return None
+            raise FileNotFoundError(f"Template file not found: {template_file_path}")
 
     results_template = {
         "point_id": [], "run_number": [], "treatment": [], "crop_code": [],
@@ -639,7 +684,8 @@ def _run_simulation(ID: str,
             # treatment rows written above. Mode A runs the FileX directly and
             # silently executes every treatment, defeating treatment_start /
             # treatment_end / treatment_list selection.
-            run_dssat(point_dir, dssat_exe_path, "B")
+            run_kwargs = {"timeout": timeout} if timeout is not None else {}
+            run_dssat(point_dir, dssat_exe_path, "B", **run_kwargs)
 
             summary = _read_csv_safe(os.path.join(point_dir, "summary.csv"))
             if summary is None or summary.empty:
@@ -668,15 +714,15 @@ def _run_simulation(ID: str,
                 write_dssbatch_sequence(exp_path, trt,
                                         sequence_start, sequence_end,
                                         batch_path)
-                run_dssat(point_dir, dssat_exe_path, "Q")
+                run_kwargs = {"timeout": timeout} if timeout is not None else {}
+                run_dssat(point_dir, dssat_exe_path, "Q", **run_kwargs)
 
                 summary = _read_csv_safe(os.path.join(point_dir, "summary.csv"))
                 if summary is None or summary.empty:
-                    log_run_error(
+                    raise RuntimeError(
                         f"trt {trt}: DSSAT produced no 'summary.csv' "
                         "(FMOPT must be 'C'; see ERROR.OUT / WARNING.OUT)."
                     )
-                    continue
 
                 summary["PYEAR"] = summary["PDAT"].astype(str).str[:4]
                 if "TRNO" not in summary.columns or summary["TRNO"].isna().all():
@@ -691,6 +737,9 @@ def _run_simulation(ID: str,
             if all_seq_results:
                 results = pd.concat([results] + all_seq_results, ignore_index=True)
 
+        else:
+            raise ValueError("run_mode must be either 'experiment' or 'sequence'")
+
         # DSSAT coordinate overwrite fallback
         if not results.empty:
             try:
@@ -704,7 +753,7 @@ def _run_simulation(ID: str,
 
     except Exception as exc:
         log_run_error(f"FATAL: {exc}")
-        return None
+        raise
 
 def _run_one_point(args: dict) -> Optional[pd.DataFrame]:
     ID = args["ID"]
@@ -717,7 +766,8 @@ def _run_one_point(args: dict) -> Optional[pd.DataFrame]:
         args["run_mode"], args["treatment_start"], args["treatment_end"],
         args["sequence_start"], args["sequence_end"],
         args["weather_start_year"], args["weather_end_year"],
-        args["dssat_exe_path"], args.get("treatment_list"), args.get("treatments")
+        args["dssat_exe_path"], args.get("treatment_list"), args.get("treatments"),
+        args.get("timeout")
     )
 
 

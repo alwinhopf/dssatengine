@@ -75,7 +75,8 @@ def yyddd_to_date(code) -> pd.Timestamp:
     else:                                # YYYYDDD
         s = s.zfill(7)
         year, doy = int(s[:4]), int(s[4:])
-    if doy < 1 or doy > 366:
+    max_doy = 366 if pd.Timestamp(year=year, month=12, day=31).dayofyear == 366 else 365
+    if doy < 1 or doy > max_doy:
         return pd.NaT
     return pd.Timestamp(year=year, month=1, day=1) + pd.Timedelta(days=doy - 1)
 
@@ -172,10 +173,22 @@ def _iter_run_blocks(lines: list[str]):
             # YEAR/DOY/DAS (daily series) but some are keyed differently —
             # Leaves.OUT by leaf number (@ LNUM …), the balance summaries by run
             # (@Run FILEX TN CR …) — so accept any '@' header, not just daily ones.
-            header = ln.lstrip("@").split()
+            raw_header = ln.lstrip("@")
+            header = [token.rstrip(".") for token in raw_header.split()]
+            # Preserve fixed-width text fields such as Plantsum TNAME instead
+            # of shifting every later column with whitespace splitting.
+            starts = [m.start() + (len(ln) - len(ln.lstrip("@")))
+                      for m in re.finditer(r"\S+", raw_header)]
+            meta["header_starts"] = starts
             rows = []
         elif header is not None and re.match(r"\s*-?\d", ln) and not ln.startswith("*"):
-            parts = ln.split()
+            starts = meta.get("header_starts", [])
+            if any("TNAME" in h for h in header) and len(starts) == len(header):
+                parts = [ln[starts[i]:starts[i + 1]].strip()
+                         for i in range(len(starts) - 1)]
+                parts.append(ln[starts[-1]:].strip())
+            else:
+                parts = ln.split()
             if not parts:
                 continue
             if len(parts) >= len(header):
@@ -440,11 +453,12 @@ def read_run_directory(run_dir: PathLike,
                            and f.name.lower() not in _NON_TABULAR)
         candidates = list(out_files)
         if include_csv:
-            # add CSV twins whose stem isn't already covered by a .OUT file
-            out_stems = {Path(f).stem.lower() for f in out_files}
             csv_files = sorted(f.name for f in d.iterdir()
-                               if f.is_file() and f.suffix.lower() == ".csv"
-                               and f.stem.lower() not in out_stems)
+                               if f.is_file() and f.suffix.lower() == ".csv")
+            csv_stems = {Path(f).stem.lower() for f in csv_files}
+            # CSV is the authoritative output of an FMOPT='C' run. Prefer it
+            # over an OUT twin, which may be stale from an earlier ASCII run.
+            candidates = [f for f in candidates if Path(f).stem.lower() not in csv_stems]
             candidates += csv_files
 
     out: dict[str, pd.DataFrame] = {}

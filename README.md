@@ -45,7 +45,7 @@ The `run → parse` half of the engine. Same function names in both languages;
 | `parse_summary` | Fixed-width `Summary.OUT` → one row per run; recovers spacey `TNAM`/`FNAM`/`MODEL` by header column positions; adds `*_date` twins. |
 | `parse_evaluate` | `Evaluate.OUT` → long `(treatment, run, variable, sim, meas)` table. |
 | `parse_csv` | `FMOPT='C'` CSV twins (`summary.csv`, `plantgro.csv`) with identical conventions. |
-| `parse_dssat_output` / `read_run_directory` | Dispatch one file by name/structure; read a whole run folder. `read_run_directory` auto-skips non-tabular balances/reports and (by default, `include_csv`) also reads the `FMOPT='C'` `.csv` twins so a CSV-mode run is read as fully as a text run (`.OUT` wins when both exist); or pass an explicit file list — typically `["Summary.OUT", "PlantGro.OUT"]`. |
+| `parse_dssat_output` / `read_run_directory` | Dispatch one file by name/structure; read a whole run folder. `read_run_directory` auto-skips non-tabular balances/reports and (by default, `include_csv`) also reads the `FMOPT='C'` `.csv` twins. A CSV twin is preferred when both exist because it is structurally safer and may be newer; or pass an explicit file list — typically `["Summary.OUT", "PlantGro.OUT"]`. |
 
 **Sequence (.SQX) note.** Sequence simulations write multi-`*RUN` files whose
 rotation phases may be *different crops with different headers*; the parsers keep
