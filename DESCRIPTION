@@ -21,4 +21,6 @@ Imports:
     DSSAT,
     readr,
     dssatutils
+Remotes:
+    alwinhopf/dssatutils@v0.4.0
 RoxygenNote: 7.3.1

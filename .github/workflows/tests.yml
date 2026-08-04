@@ -43,6 +43,10 @@ jobs:
         with:
           extra-packages: any::testthat, any::pkgload, github::alwinhopf/dssatutils@v0.4.0
           needs: check
+          # This package has no R Markdown/Quarto documentation. The action's
+          # automatic Pandoc probe resolves all Suggests/Imports a second time
+          # but loses the GitHub package reference supplied above.
+          install-pandoc: false
       - name: Run R tests
         shell: Rscript {0}
         run: |
