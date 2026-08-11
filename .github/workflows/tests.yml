@@ -41,7 +41,7 @@ jobs:
           use-public-rspm: true
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::testthat, any::pkgload, github::alwinhopf/dssatutils@v0.4.0
+          extra-packages: any::testthat, any::pkgload, github::alwinhopf/dssatutils@e9c859fa1d915623df23e2eb13084cb085dbfe3e
           needs: check
           # This package has no R Markdown/Quarto documentation. The action's
           # automatic Pandoc probe resolves all Suggests/Imports a second time

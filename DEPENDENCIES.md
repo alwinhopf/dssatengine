@@ -4,7 +4,7 @@ This file records **which version of each shared dependency every repo actually 
 so results are reproducible and upgrades are deliberate. Re-verify whenever a `dssatutils`
 tag is bumped or a consumer is updated.
 
-> **Last verified:** 2026-07-02 (by inspection of `requirements.txt`, `environment.yml`, `renv.lock`, `config.R`,
+> **Last verified:** 2026-08-11 (by inspection of `requirements.txt`, `environment.yml`, `renv.lock`, `config.R`,
 > `pyproject.toml`, `DESCRIPTION`).
 
 ## Shared dependencies
@@ -20,29 +20,28 @@ tag is bumped or a consumer is updated.
 
 | Repo | Language | Pin mechanism | Pinned to |
 |---|---|---|---|
-| DSSAT_Gridded_Run_Tutorial | Python | `environment.yml` git URL + `conda_lock.yml` resolved commits | `dssatutils@v0.4.0`; `dssatengine` pinned to verified 0.4.0 release commit `84b6e508...` until the matching tag is pushed |
-| DSSAT_Gridded_Run_Tutorial | R | `setup_renv.R` / `renv.lock` | `dssatutils@v0.4.0`; `dssatengine` pinned to verified 0.4.0 release commit `84b6e508...` until the matching tag is pushed; `USE_LOCAL_SHARED_PACKAGES=1` opts into sibling checkouts for development |
-| DSSAT_SubField_MILP_Analysis | Python | `requirements.txt` git URL | `dssatutils@v0.4.0`; `dssatengine` pinned to verified 0.4.0 release commit `84b6e508...` until the matching tag is pushed |
+| DSSAT_Gridded_Run_Tutorial | Python | `environment.yml` git URL + `conda_lock.yml` resolved commits | `dssatutils@e9c859fa...`; `dssatengine@9f5bbde0...` |
+| DSSAT_Gridded_Run_Tutorial | R | `setup_renv.R` / `renv.lock` | `dssatutils@e9c859fa...`; `dssatengine@9f5bbde0...`; `USE_LOCAL_SHARED_PACKAGES=1` opts into sibling checkouts for development |
+| DSSAT_SubField_MILP_Analysis | Python | `requirements.txt` git URL | `dssatutils@e9c859fa...`; `dssatengine@9f5bbde0...` |
 | DSSAT_ML_Phenology_Prediction | R | `config.R` -> `DSSATUTILS_PATH` / `remotes::install_git` | `@v0.1.0` fallback |
-| Bioenergy_Model_Input_Comparison | R | `setup_renv.R` / `renv.lock` | `dssatutils@v0.4.0`; `dssatengine` pinned to verified 0.4.0 release commit `84b6e508...` until the matching tag is pushed |
+| Bioenergy_Model_Input_Comparison | R | `setup_renv.R` / `renv.lock` | `dssatutils@e9c859fa...`; `dssatengine@9f5bbde0...` |
 | Bioenergy_Model_Input_Comparison | Python | via gridded engine / `ENGINE_DIR` | follows selected gridded-engine environment |
 | dssat_lca_tea | — | **does not import `dssatutils`** — consumes DSSAT output CSVs | n/a |
-| dssatcalibrator | Python | `pyproject.toml` optional extras | `[shared]` pins `dssatengine` to verified 0.4.0 release commit `84b6e508...` until the matching tag is pushed; `[acquire]` pins `dssatutils@v0.4.0` |
+| dssatcalibrator / cropmodelcalibrator | Python + R | `pyproject.toml` optional extras / `DESCRIPTION` Remotes | `dssatutils@e9c859fa...`; `dssatengine@9f5bbde0...` |
 | pythia | — | independent third-party DSSAT tool (not a consumer of the shared layers) | n/a |
 
 ## Pinning policy
 
-Consumers should pin shared workspace packages to a release tag (`@vX.Y.Z`), not
-`main` or an editable sibling path. Editable local installs are fine for development,
-but publication or handoff environments should record the tag or resolved commit in
-the relevant lockfile.
+Consumers should pin shared workspace packages to an immutable release tag or full
+commit SHA, not `main` or an editable sibling path. Editable local installs are fine
+for development, but publication or handoff environments must record the resolved
+commit in the relevant lockfile. The current shared baseline is:
 
-Temporary exception: `dssatengine` package code is version `0.4.0`, but the remote
-repository currently advertises no `v0.4.0` tag. Consumers that need `0.4.0`
-features are pinned to commit `84b6e508...` until that tag is pushed.
+- `dssatutils`: `e9c859fa1d915623df23e2eb13084cb085dbfe3e`
+- `dssatengine`: `9f5bbde0def31dd74c5f881bf6b3be30f787c6a0`
 
-After changing `dssatutils` or `dssatengine`, commit the shared-layer repo and push the
-matching tag before relying on a clean install from GitHub.
+After changing `dssatutils` or `dssatengine`, commit and push the shared-layer change,
+then update every consumer pin and lockfile together.
 
 ## Python library versions
 

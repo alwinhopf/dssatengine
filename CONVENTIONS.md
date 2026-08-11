@@ -15,9 +15,9 @@ tag; consumers then bump their pin. See [`DEPENDENCIES.md`](DEPENDENCIES.md).
 
 ## 2. Version pinning — Policy (active)
 
-Consumers pin `dssatutils` and `dssatengine` to a **git tag** (`@vX.Y.Z`), never `main`, a commit SHA, or a
-local path. This guarantees a pipeline's behavior can't change until the pin is
-deliberately bumped. The current dependency matrix lives in
+Consumers pin `dssatutils` and `dssatengine` to an immutable **git tag or full commit
+SHA**, never `main` or a local path in a handoff environment. This guarantees a
+pipeline's behavior cannot change until the pin is deliberately bumped. The current dependency matrix lives in
 [`DEPENDENCIES.md`](DEPENDENCIES.md).
 
 ## 3. R ↔ Python parity — Policy (active)
@@ -150,14 +150,14 @@ blind.
 
 ### P1 — Extract the gridded engine into a versioned package ✅ DONE
 The canonical engine was extracted into the **`dssatengine`** package (R + Python,
-current package release v0.4.0), exactly as `dssatutils` was. The gridded tutorial
+current package version 0.4.0), exactly as `dssatutils` was. The gridded tutorial
 consumes it through `dssat_main_pipeline.{R,py}`; SubField writes engine overlay
 configs and shells out to that sibling gridded engine; Bioenergy references it via
 `ENGINE_DIR`. Shared engine logic should not be hand-copied into application repos:
 a fix should land once and reach consumers by bumping pins or their selected engine
 environment (e.g. the leading-space `DSSBatch` fix and explicit `treatment_list`
-support). Consumers record release-tag pins; after shared-layer edits, commit and push
-the matching git tag before handing off or publishing an environment.
+support). Consumers record immutable tag or commit pins; after shared-layer edits,
+commit and update those pins before handing off or publishing an environment.
 
 ### P2 — Centralize `dssat_templates/`
 The same genotype files (`.CUL/.ECO/.SPE/.CDE`) are duplicated across most repos and must

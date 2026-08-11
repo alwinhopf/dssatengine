@@ -82,11 +82,11 @@ Per [`CONVENTIONS.md`](CONVENTIONS.md) §6, the engine:
 
 ### Python
 ```bash
-pip install "git+https://github.com/alwinhopf/dssatengine.git@84b6e50895e7e2e2a4b02553d2705f4d879d269b"
+pip install "git+https://github.com/alwinhopf/dssatengine.git@9f5bbde0def31dd74c5f881bf6b3be30f787c6a0"
 ```
 or pin in `requirements.txt`:
 ```
-dssatengine @ git+https://github.com/alwinhopf/dssatengine.git@84b6e50895e7e2e2a4b02553d2705f4d879d269b
+dssatengine @ git+https://github.com/alwinhopf/dssatengine.git@9f5bbde0def31dd74c5f881bf6b3be30f787c6a0
 ```
 ```python
 from dssatengine import create_grid_points, load_existing_points, run_dssat
@@ -96,17 +96,16 @@ from dssatengine.engine import _run_one_point   # parallel-driver entry point
 ### R
 ```r
 # install.packages("remotes")
-remotes::install_github("alwinhopf/dssatengine@84b6e50895e7e2e2a4b02553d2705f4d879d269b")
+remotes::install_github("alwinhopf/dssatengine@9f5bbde0def31dd74c5f881bf6b3be30f787c6a0")
 library(dssatengine)
 ```
 
 ## Versioning & pinning
 
-Semantic versioning with git tags. **Consumers always pin to a tag** (`@vX.Y.Z`), never
-`main`, so upstream changes never break a pipeline until the pin is deliberately bumped.
-After editing the engine, commit and **push the matching tag** before relying on a clean
-tag install from GitHub. The package is currently version `0.4.0`, but the remote
-`v0.4.0` tag still needs to be pushed; per-consumer pins are tracked in
+Semantic versioning with git tags. Consumers pin to an immutable release tag or full
+commit SHA, never `main`, so upstream changes cannot alter an environment silently.
+The verified workspace baseline is commit `9f5bbde0def31dd74c5f881bf6b3be30f787c6a0`;
+per-consumer pins are tracked in
 [`DEPENDENCIES.md`](DEPENDENCIES.md), and the change history is in [`NEWS.md`](NEWS.md).
 
 ## Testing

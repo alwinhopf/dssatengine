@@ -22,5 +22,5 @@ Imports:
     readr,
     dssatutils
 Remotes:
-    alwinhopf/dssatutils@v0.4.0
+    alwinhopf/dssatutils@e9c859fa1d915623df23e2eb13084cb085dbfe3e
 RoxygenNote: 7.3.1
