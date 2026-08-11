@@ -82,11 +82,11 @@ Per [`CONVENTIONS.md`](CONVENTIONS.md) §6, the engine:
 
 ### Python
 ```bash
-pip install "git+https://github.com/alwinhopf/dssatengine.git@9f5bbde0def31dd74c5f881bf6b3be30f787c6a0"
+pip install "git+https://github.com/alwinhopf/dssatengine.git@2280b11977ad373b9ae19d2d4497e8f276f7b133"
 ```
 or pin in `requirements.txt`:
 ```
-dssatengine @ git+https://github.com/alwinhopf/dssatengine.git@9f5bbde0def31dd74c5f881bf6b3be30f787c6a0
+dssatengine @ git+https://github.com/alwinhopf/dssatengine.git@2280b11977ad373b9ae19d2d4497e8f276f7b133
 ```
 ```python
 from dssatengine import create_grid_points, load_existing_points, run_dssat
@@ -96,7 +96,7 @@ from dssatengine.engine import _run_one_point   # parallel-driver entry point
 ### R
 ```r
 # install.packages("remotes")
-remotes::install_github("alwinhopf/dssatengine@9f5bbde0def31dd74c5f881bf6b3be30f787c6a0")
+remotes::install_github("alwinhopf/dssatengine@2280b11977ad373b9ae19d2d4497e8f276f7b133")
 library(dssatengine)
 ```
 
@@ -104,7 +104,7 @@ library(dssatengine)
 
 Semantic versioning with git tags. Consumers pin to an immutable release tag or full
 commit SHA, never `main`, so upstream changes cannot alter an environment silently.
-The verified workspace baseline is commit `9f5bbde0def31dd74c5f881bf6b3be30f787c6a0`;
+The verified workspace baseline is commit `2280b11977ad373b9ae19d2d4497e8f276f7b133`;
 per-consumer pins are tracked in
 [`DEPENDENCIES.md`](DEPENDENCIES.md), and the change history is in [`NEWS.md`](NEWS.md).
 
