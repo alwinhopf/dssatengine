@@ -15,4 +15,4 @@ def test_r_dependency_and_ci_use_same_dssatutils_revision():
     assert match, "DESCRIPTION must pin dssatutils to an immutable commit"
     assert match.group(1) == UTILS_REF
     assert f"github::alwinhopf/dssatutils@{UTILS_REF}" in workflow
-
+    assert "GITHUB_PAT: ${{ github.token }}" in workflow
