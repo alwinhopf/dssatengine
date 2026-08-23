@@ -67,6 +67,13 @@ deduplicated). The legacy `treatments` argument is deprecated and may not be com
 `treatment_list`. The Python package additionally exposes the private `_run_one_point` /
 `_run_simulation` helpers used by the parallel drivers.
 
+The tidy per-run schema retains validation-relevant `Summary.OUT` endpoints in
+both languages: planting, emergence, anthesis, maturity and harvest dates;
+aboveground, grain and pod weights; seed weight; harvest index; and maximum LAI.
+These sit alongside the existing soil-carbon, irrigation, nitrogen and GHG
+fields, allowing consumer studies to validate more than yield without reading
+deleted per-point run folders.
+
 ## Behavior guarantees (cross-platform & failsafe)
 
 Per [`CONVENTIONS.md`](CONVENTIONS.md) §6, the engine:
