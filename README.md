@@ -26,7 +26,9 @@ the root packages also export the shared `LAT_COLUMN`, `LONG_COLUMN`, and
 
 | Function (same name in R and Python) | Role |
 |---|---|
-| `create_grid_points` | Build a regular grid of points inside a boundary polygon (Albers EPSG:5070), write a point shapefile with `LAT`/`LONG`/`ID`. |
+| `create_grid_points` | Legacy mode: independently place a regular point grid inside a boundary and write `LAT`/`LONG`/`ID`. |
+| `create_master_grid_points` | Build a persistent fixed-CRS, fixed-origin master lattice with stable `MROW`/`MCOL` indices and IDs. |
+| `derive_nested_grid_points` | Select an exact nested subset whose spacing is an integer multiple of the master spacing, retaining master IDs and coordinates. |
 | `load_existing_points` | Load a user point/polygon shapefile, reproject to EPSG:4326, normalize/regenerate the `ID` column. |
 | `extend_weather_repeat_single_ignore_partial` | Extend a `.WTH` file to a target end year by repeating a complete reference year (month-day matched, leap-aware), preserving `YYDDD`/`YYYYDDD` format. |
 | `normalize_treatment_list` | Normalize contiguous or explicit treatment selections into ordered, deduplicated positive integers. |

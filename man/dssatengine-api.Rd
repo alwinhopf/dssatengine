@@ -2,10 +2,15 @@
 \alias{dssatengine-api}
 \alias{append_utf8}
 \alias{create_grid_points}
+\alias{create_master_grid_points}
+\alias{derive_nested_grid_points}
 \alias{extend_weather_repeat_single_ignore_partial}
 \alias{LAT_COLUMN}
 \alias{load_existing_points}
 \alias{LONG_COLUMN}
+\alias{MASTER_COL_COLUMN}
+\alias{MASTER_ROW_COLUMN}
+\alias{MASTER_SPACING_COLUMN}
 \alias{normalize_treatment_list}
 \alias{parse_csv}
 \alias{parse_dssat_output}

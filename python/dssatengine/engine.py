@@ -17,6 +17,9 @@ from shapely.geometry import Point
 LAT_COLUMN = "LAT"
 LONG_COLUMN = "LONG"
 POINT_ID_COLUMN = "ID"
+MASTER_ROW_COLUMN = "MROW"
+MASTER_COL_COLUMN = "MCOL"
+MASTER_SPACING_COLUMN = "MSPACE_M"
 
 
 def append_utf8(path: str | os.PathLike, text) -> Path:
@@ -126,6 +129,143 @@ def create_grid_points(boundary_shape: gpd.GeoDataFrame,
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     inside.to_file(output_path)
     return inside
+
+
+def create_master_grid_points(boundary_shape: gpd.GeoDataFrame,
+                              spacing_m: int,
+                              output_path: str,
+                              grid_crs: str = "EPSG:6933",
+                              origin_x: float = 0.0,
+                              origin_y: float = 0.0,
+                              chunk_rows: int = 256) -> gpd.GeoDataFrame:
+    """Create a persistent, origin-anchored master point lattice.
+
+    Unlike :func:`create_grid_points`, the lattice origin and CRS do not depend
+    on the current boundary extent.  ``MROW`` and ``MCOL`` therefore provide a
+    reproducible basis for selecting exact nested subsets in later runs.
+    """
+    spacing_m = float(spacing_m)
+    if not math.isfinite(spacing_m) or spacing_m <= 0:
+        raise ValueError("spacing_m must be a positive distance in metres")
+    if boundary_shape.empty or boundary_shape.crs is None:
+        raise ValueError("boundary_shape must be non-empty and have a defined CRS")
+    if not math.isfinite(float(origin_x)) or not math.isfinite(float(origin_y)):
+        raise ValueError("master-grid origin coordinates must be finite")
+    if int(chunk_rows) < 1:
+        raise ValueError("chunk_rows must be a positive integer")
+
+    try:
+        projected = boundary_shape.to_crs(grid_crs)
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError(f"Could not project boundary to master_grid_crs={grid_crs!r}: {exc}") from exc
+    minx, miny, maxx, maxy = projected.total_bounds
+    col_min = math.ceil((minx - origin_x) / spacing_m)
+    col_max = math.floor((maxx - origin_x) / spacing_m)
+    row_min = math.ceil((miny - origin_y) / spacing_m)
+    row_max = math.floor((maxy - origin_y) / spacing_m)
+    if col_min > col_max or row_min > row_max:
+        raise RuntimeError("STEP 0 FAILED: Boundary contains no master-grid lattice nodes.")
+
+    cols = np.arange(col_min, col_max + 1, dtype=np.int64)
+    rows = np.arange(row_min, row_max + 1, dtype=np.int64)
+    boundary_union = (
+        projected.geometry.union_all()
+        if hasattr(projected.geometry, "union_all")
+        else projected.geometry.unary_union
+    )
+    chunks = []
+    for start in range(0, len(rows), int(chunk_rows)):
+        row_block = rows[start:start + int(chunk_rows)]
+        col_values = np.tile(cols, len(row_block))
+        row_values = np.repeat(row_block, len(cols))
+        xs = float(origin_x) + col_values * spacing_m
+        ys = float(origin_y) + row_values * spacing_m
+        candidates = gpd.GeoDataFrame(
+            {
+                MASTER_ROW_COLUMN: row_values,
+                MASTER_COL_COLUMN: col_values,
+                MASTER_SPACING_COLUMN: np.full(len(row_values), int(round(spacing_m))),
+            },
+            geometry=gpd.points_from_xy(xs, ys),
+            crs=grid_crs,
+        )
+        keep = candidates.geometry.intersects(boundary_union)
+        if keep.any():
+            chunks.append(candidates.loc[keep].copy())
+    inside = (
+        gpd.GeoDataFrame(pd.concat(chunks, ignore_index=True), crs=grid_crs)
+        if chunks else gpd.GeoDataFrame(columns=candidates.columns, crs=grid_crs)
+    )
+    if inside.empty:
+        raise RuntimeError("STEP 0 FAILED: No master-grid points created inside boundary.")
+
+    inside = inside.sort_values([MASTER_ROW_COLUMN, MASTER_COL_COLUMN]).reset_index(drop=True)
+    inside[POINT_ID_COLUMN] = [f"{i + 1:08d}" for i in range(len(inside))]
+    inside = inside.to_crs("EPSG:4326")
+    inside[LAT_COLUMN] = inside.geometry.y.round(6)
+    inside[LONG_COLUMN] = inside.geometry.x.round(6)
+
+    output_dir = os.path.dirname(str(output_path))
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+    inside.to_file(output_path)
+    return inside
+
+
+def derive_nested_grid_points(master_grid: gpd.GeoDataFrame,
+                              target_spacing_m: int,
+                              output_path: str,
+                              master_spacing_m: int | None = None,
+                              phase_row: int = 0,
+                              phase_col: int = 0) -> gpd.GeoDataFrame:
+    """Select an exact nested point subset from a master lattice.
+
+    Target spacing must be an integer multiple of the master spacing.  Stable
+    master IDs and coordinates are retained across every derived resolution.
+    """
+    required = {MASTER_ROW_COLUMN, MASTER_COL_COLUMN, POINT_ID_COLUMN}
+    missing = sorted(required - set(master_grid.columns))
+    if missing:
+        raise ValueError("Master grid is missing required columns: " + ", ".join(missing))
+    if master_grid.empty or master_grid.crs is None:
+        raise ValueError("master_grid must be non-empty and have a defined CRS")
+
+    if master_spacing_m is None:
+        if MASTER_SPACING_COLUMN not in master_grid.columns:
+            raise ValueError("master_spacing_m is required when MSPACE_M is absent")
+        spacings = pd.to_numeric(master_grid[MASTER_SPACING_COLUMN], errors="coerce").dropna().unique()
+        if len(spacings) != 1:
+            raise ValueError("Master grid must contain exactly one MSPACE_M value")
+        master_spacing_m = float(spacings[0])
+    master_spacing_m = float(master_spacing_m)
+    target_spacing_m = float(target_spacing_m)
+    if master_spacing_m <= 0 or target_spacing_m <= 0:
+        raise ValueError("master and target spacing must be positive")
+    ratio = target_spacing_m / master_spacing_m
+    factor = int(round(ratio))
+    if factor < 1 or not math.isclose(ratio, factor, rel_tol=0, abs_tol=1e-9):
+        raise ValueError(
+            f"target spacing ({target_spacing_m:g} m) must be an integer multiple "
+            f"of master spacing ({master_spacing_m:g} m)"
+        )
+
+    rows = pd.to_numeric(master_grid[MASTER_ROW_COLUMN], errors="raise").astype(np.int64)
+    cols = pd.to_numeric(master_grid[MASTER_COL_COLUMN], errors="raise").astype(np.int64)
+    keep = ((rows - int(phase_row)) % factor == 0) & ((cols - int(phase_col)) % factor == 0)
+    derived = master_grid.loc[keep].copy()
+    if derived.empty:
+        raise RuntimeError(
+            f"No nested points selected at {target_spacing_m:g} m; check the master-grid phase/origin."
+        )
+    derived["SAMP_M"] = int(round(target_spacing_m))
+    derived["NEST_F"] = factor
+    derived = derived.sort_values([MASTER_ROW_COLUMN, MASTER_COL_COLUMN]).reset_index(drop=True)
+
+    output_dir = os.path.dirname(str(output_path))
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+    derived.to_file(output_path)
+    return derived
 
 def load_existing_points(input_path: str, output_path: str) -> gpd.GeoDataFrame:
     if not os.path.exists(input_path):

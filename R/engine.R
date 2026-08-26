@@ -19,6 +19,9 @@ NULL
 LAT_COLUMN <- "LAT"
 LONG_COLUMN <- "LONG"
 POINT_ID_COLUMN <- "ID"
+MASTER_ROW_COLUMN <- "MROW"
+MASTER_COL_COLUMN <- "MCOL"
+MASTER_SPACING_COLUMN <- "MSPACE_M"
 
 append_utf8 <- function(path, text) {
   con <- file(path, open = "a", encoding = "UTF-8")
@@ -103,6 +106,135 @@ create_grid_points <- function(boundary_shape, spacing_meters, output_path) {
   
   sf::st_write(points_with_coords, output_path, append = FALSE, delete_layer = TRUE, quiet = TRUE)
   return(points_with_coords)
+}
+
+#' Create a persistent origin-anchored master point lattice
+#'
+#' @export
+create_master_grid_points <- function(boundary_shape, spacing_meters, output_path,
+                                      grid_crs = "EPSG:6933",
+                                      origin_x = 0, origin_y = 0,
+                                      chunk_rows = 256L) {
+  if (!is.numeric(spacing_meters) || length(spacing_meters) != 1L ||
+      is.na(spacing_meters) || spacing_meters <= 0) {
+    stop("spacing_meters must be a positive distance in metres", call. = FALSE)
+  }
+  if (!nrow(boundary_shape) || is.na(sf::st_crs(boundary_shape))) {
+    stop("boundary_shape must be non-empty and have a defined CRS", call. = FALSE)
+  }
+  if (!is.finite(origin_x) || !is.finite(origin_y)) {
+    stop("master-grid origin coordinates must be finite", call. = FALSE)
+  }
+  if (is.na(chunk_rows) || as.integer(chunk_rows) < 1L) {
+    stop("chunk_rows must be a positive integer", call. = FALSE)
+  }
+  boundary_projected <- tryCatch(
+    sf::st_transform(boundary_shape, grid_crs),
+    error = function(e) stop(sprintf(
+      "Could not project boundary to master_grid_crs='%s': %s", grid_crs, e$message
+    ), call. = FALSE)
+  )
+  bbox <- sf::st_bbox(boundary_projected)
+  col_min <- ceiling((bbox$xmin - origin_x) / spacing_meters)
+  col_max <- floor((bbox$xmax - origin_x) / spacing_meters)
+  row_min <- ceiling((bbox$ymin - origin_y) / spacing_meters)
+  row_max <- floor((bbox$ymax - origin_y) / spacing_meters)
+  if (col_min > col_max || row_min > row_max) {
+    stop("STEP 0 FAILED: Boundary contains no master-grid lattice nodes.", call. = FALSE)
+  }
+
+  cols <- seq.int(col_min, col_max)
+  rows <- seq.int(row_min, row_max)
+  boundary_union <- sf::st_union(boundary_projected)
+  chunks <- vector("list", ceiling(length(rows) / as.integer(chunk_rows)))
+  chunk_index <- 0L
+  for (start in seq.int(1L, length(rows), by = as.integer(chunk_rows))) {
+    row_block <- rows[start:min(length(rows), start + as.integer(chunk_rows) - 1L)]
+    lattice <- expand.grid(MROW = row_block, MCOL = cols)
+    lattice <- lattice[order(lattice$MROW, lattice$MCOL), , drop = FALSE]
+    lattice$X <- origin_x + lattice$MCOL * spacing_meters
+    lattice$Y <- origin_y + lattice$MROW * spacing_meters
+    lattice$MSPACE_M <- as.integer(round(spacing_meters))
+    candidates <- sf::st_as_sf(lattice, coords = c("X", "Y"), crs = grid_crs)
+    keep <- lengths(sf::st_intersects(candidates, boundary_union)) > 0L
+    if (any(keep)) {
+      chunk_index <- chunk_index + 1L
+      chunks[[chunk_index]] <- candidates[keep, ]
+    }
+  }
+  chunks <- chunks[seq_len(chunk_index)]
+  inside <- if (length(chunks)) do.call(rbind, chunks) else candidates[FALSE, ]
+  if (!nrow(inside)) {
+    stop("STEP 0 FAILED: No master-grid points created inside boundary.", call. = FALSE)
+  }
+  inside <- inside[order(inside$MROW, inside$MCOL), ]
+  inside[[POINT_ID_COLUMN]] <- sprintf("%08d", seq_len(nrow(inside)))
+  inside <- sf::st_transform(inside, 4326)
+  xy <- sf::st_coordinates(inside)
+  inside[[LAT_COLUMN]] <- round(xy[, 2], 6)
+  inside[[LONG_COLUMN]] <- round(xy[, 1], 6)
+  dir.create(dirname(output_path), recursive = TRUE, showWarnings = FALSE)
+  sf::st_write(inside, output_path, append = FALSE, delete_layer = TRUE, quiet = TRUE)
+  inside
+}
+
+#' Derive an exact nested point subset from a master lattice
+#'
+#' @export
+derive_nested_grid_points <- function(master_grid, target_spacing_meters,
+                                      output_path, master_spacing_meters = NULL,
+                                      phase_row = 0L, phase_col = 0L) {
+  required <- c(MASTER_ROW_COLUMN, MASTER_COL_COLUMN, POINT_ID_COLUMN)
+  missing <- setdiff(required, names(master_grid))
+  if (length(missing)) {
+    stop("Master grid is missing required columns: ", paste(missing, collapse = ", "),
+         call. = FALSE)
+  }
+  if (!nrow(master_grid) || is.na(sf::st_crs(master_grid))) {
+    stop("master_grid must be non-empty and have a defined CRS", call. = FALSE)
+  }
+  if (is.null(master_spacing_meters)) {
+    if (!(MASTER_SPACING_COLUMN %in% names(master_grid))) {
+      stop("master_spacing_meters is required when MSPACE_M is absent", call. = FALSE)
+    }
+    spacings <- unique(as.numeric(master_grid[[MASTER_SPACING_COLUMN]]))
+    spacings <- spacings[is.finite(spacings)]
+    if (length(spacings) != 1L) {
+      stop("Master grid must contain exactly one MSPACE_M value", call. = FALSE)
+    }
+    master_spacing_meters <- spacings[[1]]
+  }
+  master_spacing_meters <- as.numeric(master_spacing_meters)
+  target_spacing_meters <- as.numeric(target_spacing_meters)
+  if (!is.finite(master_spacing_meters) || !is.finite(target_spacing_meters) ||
+      master_spacing_meters <= 0 || target_spacing_meters <= 0) {
+    stop("master and target spacing must be positive", call. = FALSE)
+  }
+  ratio <- target_spacing_meters / master_spacing_meters
+  factor <- as.integer(round(ratio))
+  if (factor < 1L || abs(ratio - factor) > 1e-9) {
+    stop(sprintf(
+      "target spacing (%g m) must be an integer multiple of master spacing (%g m)",
+      target_spacing_meters, master_spacing_meters
+    ), call. = FALSE)
+  }
+  rows <- as.integer(master_grid[[MASTER_ROW_COLUMN]])
+  cols <- as.integer(master_grid[[MASTER_COL_COLUMN]])
+  keep <- ((rows - as.integer(phase_row)) %% factor == 0L) &
+          ((cols - as.integer(phase_col)) %% factor == 0L)
+  derived <- master_grid[keep, ]
+  if (!nrow(derived)) {
+    stop(sprintf(
+      "No nested points selected at %g m; check the master-grid phase/origin.",
+      target_spacing_meters
+    ), call. = FALSE)
+  }
+  derived$SAMP_M <- as.integer(round(target_spacing_meters))
+  derived$NEST_F <- factor
+  derived <- derived[order(derived[[MASTER_ROW_COLUMN]], derived[[MASTER_COL_COLUMN]]), ]
+  dir.create(dirname(output_path), recursive = TRUE, showWarnings = FALSE)
+  sf::st_write(derived, output_path, append = FALSE, delete_layer = TRUE, quiet = TRUE)
+  derived
 }
 
 #' Load an existing point shapefile and standardize it to the pipeline schema
