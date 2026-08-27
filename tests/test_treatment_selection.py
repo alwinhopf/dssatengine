@@ -71,6 +71,48 @@ def test_write_dssbatch_sequence_column_layout(tmp_path):
         assert ln[107:113] == f"{i:6d}"              # SQ/ROTNO cols 108-113
 
 
+def test_point_filex_resolution_prefers_patched_id_file(tmp_path):
+    point_id = "00000001"
+    raw_template = tmp_path / "source" / "CARINATA1984.SQX"
+    raw_template.parent.mkdir()
+    raw_template.write_text("WID00000\n", encoding="utf-8")
+
+    point_dir = tmp_path / point_id
+    point_dir.mkdir()
+    (point_dir / raw_template.name).write_text("WID00000\n", encoding="utf-8")
+    patched = point_dir / f"{point_id}.SQX"
+    patched.write_text(f"{point_id}\n", encoding="utf-8")
+
+    resolved = engine_module._resolve_point_filex(
+        point_id, raw_template.name, str(raw_template), point_dir
+    )
+    assert Path(resolved) == patched
+    assert patched.read_text(encoding="utf-8") == f"{point_id}\n"
+
+    batch = point_dir / "DSSBatch.V48"
+    engine_module.write_dssbatch_sequence(resolved, 4, 1, 1, str(batch))
+    assert any(line.startswith(f"{point_id}.SQX")
+               for line in batch.read_text(encoding="utf-8").splitlines())
+
+
+def test_point_filex_resolution_canonicalizes_prepared_template(tmp_path):
+    point_id = "00000002"
+    raw_template = tmp_path / "source" / "CARINATA1984.SQX"
+    raw_template.parent.mkdir()
+    raw_template.write_text("WID00000\n", encoding="utf-8")
+
+    point_dir = tmp_path / point_id
+    point_dir.mkdir()
+    prepared = point_dir / raw_template.name
+    prepared.write_text(f"{point_id}\n", encoding="utf-8")
+
+    resolved = Path(engine_module._resolve_point_filex(
+        point_id, raw_template.name, str(raw_template), point_dir
+    ))
+    assert resolved.name == f"{point_id}.SQX"
+    assert resolved.read_text(encoding="utf-8") == f"{point_id}\n"
+
+
 def _fake_dssat_exe(tmp_path: Path, exit_code: int = 0) -> Path:
     if os.name == "nt":
         exe = tmp_path / "fake_dssat.bat"

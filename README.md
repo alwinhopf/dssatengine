@@ -69,6 +69,13 @@ deduplicated). The legacy `treatments` argument is deprecated and may not be com
 `treatment_list`. The Python package additionally exposes the private `_run_one_point` /
 `_run_simulation` helpers used by the parallel drivers.
 
+Before writing the batch, both implementations resolve the prepared FileX to a
+point-specific `<ID>.<ext>` filename. An existing point-specific file is preferred;
+otherwise an already prepared template-named file in the point folder is copied to
+that canonical name. This prevents a batch from accidentally running the untouched
+source template and keeps the experiment basename within DSSAT's eight-character
+convention when the standard eight-digit point IDs are used.
+
 The tidy per-run schema retains validation-relevant `Summary.OUT` endpoints in
 both languages: planting, emergence, anthesis, maturity and harvest dates;
 aboveground, grain and pod weights; seed weight; harvest index; and maximum LAI.

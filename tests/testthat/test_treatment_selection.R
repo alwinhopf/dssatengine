@@ -79,6 +79,43 @@ test_that("write_dssbatch_sequence places SQ in CSM's ROTNO columns 108-113", {
   }
 })
 
+test_that("point FileX resolution prefers the patched ID-specific file", {
+  root <- tempfile(); dir.create(root)
+  source_dir <- file.path(root, "source"); dir.create(source_dir)
+  point_dir <- file.path(root, "00000001"); dir.create(point_dir)
+  template <- file.path(source_dir, "CARINATA1984.SQX")
+  writeLines("WID00000", template)
+  writeLines("WID00000", file.path(point_dir, basename(template)))
+  patched <- file.path(point_dir, "00000001.SQX")
+  writeLines("00000001", patched)
+
+  resolved <- resolve_point_filex(
+    "00000001", basename(template), template, point_dir
+  )
+  expect_equal(resolved, "00000001.SQX")
+  expect_equal(readLines(patched, warn = FALSE), "00000001")
+
+  batch <- file.path(point_dir, "DSSBatch.V48")
+  write_dssbatch_sequence(resolved, 4L, 1L, 1L, batch)
+  expect_true(any(startsWith(readLines(batch, warn = FALSE), "00000001.SQX")))
+})
+
+test_that("point FileX resolution canonicalizes a prepared template-named file", {
+  root <- tempfile(); dir.create(root)
+  source_dir <- file.path(root, "source"); dir.create(source_dir)
+  point_dir <- file.path(root, "00000002"); dir.create(point_dir)
+  template <- file.path(source_dir, "CARINATA1984.SQX")
+  writeLines("WID00000", template)
+  prepared <- file.path(point_dir, basename(template))
+  writeLines("00000002", prepared)
+
+  resolved <- resolve_point_filex(
+    "00000002", basename(template), template, point_dir
+  )
+  expect_equal(resolved, "00000002.SQX")
+  expect_equal(readLines(file.path(point_dir, resolved), warn = FALSE), "00000002")
+})
+
 test_that("file helpers match the Python public surface", {
   text <- tempfile(); safe_write_lines(c("one", "two"), text, delay_sec = 0)
   append_utf8(text, "three")

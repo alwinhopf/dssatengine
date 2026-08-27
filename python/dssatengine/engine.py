@@ -83,6 +83,38 @@ def write_sequence_phase_file(source_file: str | os.PathLike,
         )
     return safe_write_lines(output, target_file)
 
+
+def _resolve_point_filex(ID: str, template_file_name: str,
+                         template_file_path: str,
+                         point_dir: str | os.PathLike) -> str:
+    """Return a canonical point-specific FileX path inside *point_dir*.
+
+    Folder builders may prepare either ``<ID>.<ext>`` (R) or a patched copy
+    using the template basename (Python). Prefer the former; otherwise copy the
+    prepared in-folder file, falling back to the raw template only when needed.
+    """
+    extension = os.path.splitext(template_file_name)[1]
+    if not extension:
+        raise ValueError("template_file_name must include a DSSAT FileX extension")
+
+    point_path = os.path.join(os.fspath(point_dir), f"{ID}{extension}")
+    if os.path.isfile(point_path):
+        return point_path
+
+    prepared_template = os.path.join(
+        os.fspath(point_dir), os.path.basename(template_file_name)
+    )
+    if os.path.isfile(prepared_template):
+        source_path = prepared_template
+    elif os.path.isfile(template_file_path):
+        source_path = template_file_path
+    else:
+        raise FileNotFoundError(f"Template file not found: {template_file_path}")
+
+    import shutil
+    shutil.copy2(source_path, point_path)
+    return point_path
+
 def _is_leap(year: int) -> bool:
     return (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0)
 
@@ -782,21 +814,13 @@ def _run_simulation(ID: str,
             pass
         print(line)
 
-    ext_map   = {"MZ": "MZX", "WH": "WHX", "SB": "SBX", "SC": "SCX",
-                 "BA": "BAX", "SG": "SGX", "RI": "RIX"}
-    ext       = ext_map.get(crop_extension, template_file_name.rsplit(".", 1)[-1])
-    exp_fname = f"{template_file_name.rsplit('.', 1)[0]}.{ext}"
-    exp_path  = os.path.join(point_dir, exp_fname)
-
-    # Copy template into the point directory when the experiment file is absent
-    # (mirrors R engine's file.copy(template_file_path, ".") fallback).
-    if not os.path.isfile(exp_path):
-        if os.path.isfile(template_file_path):
-            import shutil
-            shutil.copy2(template_file_path, exp_path)
-        else:
-            log_run_error(f"Template file not found: {template_file_path}")
-            raise FileNotFoundError(f"Template file not found: {template_file_path}")
+    try:
+        exp_path = _resolve_point_filex(
+            ID, template_file_name, template_file_path, point_dir
+        )
+    except Exception as exc:
+        log_run_error(str(exc))
+        raise
 
     results_template = {
         "point_id": [], "run_number": [], "treatment": [], "crop_code": [],

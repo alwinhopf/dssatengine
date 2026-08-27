@@ -1,5 +1,16 @@
 # Changelog & Versioning Conventions
 
+## [0.4.1] - 2026-08-27
+
+### Fixed
+- **Point-specific FileX selection for batch and sequence runs.** Both R and
+  Python now canonicalize the prepared experiment/sequence file to
+  `<point ID>.<ext>` and write that name to `DSSBatch.V48`. R previously wrote
+  a patched `<ID>.SQX` but ran a newly copied, untouched template file, leaving
+  `WID00000`/`SID00000` placeholders active and causing every sequence run to
+  fail with `Weather file not found: WID00000.WTH`. Regression tests cover both
+  supported folder-builder conventions.
+
 ## Versioning Conventions
 
 `dssatengine` adheres to Semantic Versioning (SemVer) with the following specific rules:

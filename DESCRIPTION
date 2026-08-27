@@ -1,7 +1,7 @@
 Package: dssatengine
 Type: Package
 Title: Canonical Gridded Crop Modeling Engine for DSSAT
-Version: 0.4.0
+Version: 0.4.1
 Authors@R: person("Alwin", "Hopf", email = "alwinhopf@gmail.com", role = c("aut", "cre"))
 Author: Alwin Hopf
 Maintainer: Alwin Hopf <alwinhopf@gmail.com>

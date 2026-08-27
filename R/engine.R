@@ -67,6 +67,33 @@ write_sequence_phase_file <- function(source_file, target_file, treatment, phase
   invisible(target_file)
 }
 
+resolve_point_filex <- function(ID, template_file_name, template_file_path,
+                                point_dir = ".") {
+  extension <- tools::file_ext(template_file_name)
+  if (!nzchar(extension)) {
+    stop("template_file_name must include a DSSAT FileX extension", call. = FALSE)
+  }
+
+  point_file <- paste0(ID, ".", extension)
+  point_path <- file.path(point_dir, point_file)
+  if (file.exists(point_path)) return(point_file)
+
+  prepared_template <- file.path(point_dir, basename(template_file_name))
+  source_path <- if (file.exists(prepared_template)) {
+    prepared_template
+  } else if (file.exists(template_file_path)) {
+    template_file_path
+  } else {
+    stop(sprintf("Template file not found: %s", template_file_path), call. = FALSE)
+  }
+
+  if (!file.copy(source_path, point_path, overwrite = TRUE)) {
+    stop(sprintf("Failed to create point-specific FileX: %s", point_path),
+         call. = FALSE)
+  }
+  point_file
+}
+
 #' Create a regular grid of points inside boundary_shape
 #'
 #' @export
@@ -685,17 +712,9 @@ run_simulation <- function(ID,
 
   trt_vec <- normalize_treatment_list(treatment_start, treatment_end, treatment_list, treatments)
 
-  template_ext <- tools::file_ext(template_file_name)
-  experiment_file <- basename(template_file_name)
-  if (!file.exists(experiment_file)) {
-    # Copy from template path if not present in folder
-    if (file.exists(template_file_path)) {
-      copied <- file.copy(template_file_path, experiment_file, overwrite = TRUE)
-      if (!copied) stop("Failed to copy requested FileX template", call. = FALSE)
-    } else {
-      stop(sprintf("Template file not found: %s", template_file_path), call. = FALSE)
-    }
-  }
+  experiment_file <- resolve_point_filex(
+    ID, template_file_name, template_file_path, point_dir = "."
+  )
   
   results_template <- data.frame(
     point_id = character(), run_number = numeric(), treatment = numeric(), crop_code = character(),
