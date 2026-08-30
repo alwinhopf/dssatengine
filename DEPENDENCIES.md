@@ -13,8 +13,8 @@ tag is bumped or a consumer is updated.
 |---|---|---|
 | `DSSAT48/dscsm048` | Compiled binary | DSSAT-CSM v4.8 (install in `DSSAT48/`) |
 | `dssat_csm_os` | Fortran source | open-source DSSAT-CSM tree (separate checkout) |
-| `dssatutils` | R + Python package | `0.4.0` (`pyproject.toml` + `DESCRIPTION`) |
-| `dssatengine` | R + Python package | `0.4.0` (`pyproject.toml` + `DESCRIPTION`) |
+| `dssatutils` | R + Python package | `0.5.0` (`pyproject.toml` + `DESCRIPTION`) |
+| `dssatengine` | R + Python package | `0.4.1` (`pyproject.toml` + `DESCRIPTION`) |
 
 ## How each consumer pins `dssatutils`
 
