@@ -55,3 +55,10 @@ pytest tests/
 # R testthat
 Rscript -e "testthat::test_dir('tests/testthat')"
 ```
+
+## 5. CI and clean-checkout guardrails
+
+Run both language suites before live runs and test from a clean checkout. Any
+consumer import of a newer shared utility API requires coordinated immutable
+revision updates in this repository, consumer workflows, lockfiles, and docs.
+Keep generated caches and DSSAT run artifacts out of commits.
