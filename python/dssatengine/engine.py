@@ -781,7 +781,11 @@ def _build_result_rows(ID: str, summary: pd.DataFrame,
         "inorganic_n_applied_count":              _reindex_col("NIM"),
         "inorganic_n_applied_kg_ha":              _reindex_col("NAPC"),
         "nitrate_leaching_kg_ha":                 _reindex_col("NLCC"),
-        "cumulative_net_co2_emissions_kg_CO2_ha": summary.get("CO2EM"),
+        "cumulative_net_co2_emissions_kg_CO2_ha": pd.to_numeric(summary.get("CO2EM"), errors="coerce") * (44.0 / 12.0),
+        "dssat_co2em_kg_C_ha": summary.get("CO2EM"),
+        "output_metric_schema": 2,
+        "flux_period_basis": "DSSAT_season_not_calendar_year",
+        "soc_delta_period_basis": "first_to_last_recorded_soilorg_row",
         "cumulative_n2o_emissions_kg_N_ha":       summary.get("N2OEM"),
     })
 

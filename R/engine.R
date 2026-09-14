@@ -864,6 +864,13 @@ run_simulation <- function(ID,
       stop("run_mode must be either 'experiment' or 'sequence'", call. = FALSE)
     }
     
+    # CO2EM is kg C/ha (GHG_mod.for); retain raw mass and convert once.
+    results$dssat_co2em_kg_C_ha <- results$cumulative_net_co2_emissions_kg_CO2_ha
+    results$cumulative_net_co2_emissions_kg_CO2_ha <- results$dssat_co2em_kg_C_ha * (44 / 12)
+    results$output_metric_schema <- rep(2L, nrow(results))
+    results$flux_period_basis <- rep("DSSAT_season_not_calendar_year", nrow(results))
+    results$soc_delta_period_basis <- rep("first_to_last_recorded_soilorg_row", nrow(results))
+
     # Coordinate overwrite fallback
     if (!is.null(points_df) && nrow(results) > 0) {
       pt_row <- points_df[points_df[[POINT_ID_COLUMN]] == ID, ]
