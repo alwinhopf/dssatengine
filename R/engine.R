@@ -627,14 +627,31 @@ run_dssat <- function(run_dir, exe, run_mode_flag = "A", filex = "",
     "DSSBatch.V48"
   }
 
-  exe_path <- exe
-  has_dir <- grepl("[/\\\\]", exe)
-  if (!has_dir) {
-    resolved <- Sys.which(exe)
-    if (nzchar(resolved)) exe_path <- resolved
+  exe_path <- NULL
+  if (requireNamespace("dssatutils", quietly = TRUE) &&
+      exists("find_dssat", asNamespace("dssatutils"), mode = "function")) {
+    exe_path <- dssatutils::find_dssat(exe)
   }
-  if (has_dir && !file.exists(exe_path)) {
-    stop(sprintf("DSSAT executable not found: %s", exe_path), call. = FALSE)
+  if (is.null(exe_path)) {
+    if (nzchar(as.character(exe)[1])) {
+      if (grepl("[/\\\\]", exe) && file.exists(exe)) {
+        exe_path <- normalizePath(exe, winslash = "/", mustWork = FALSE)
+      } else {
+        cand <- Sys.which(exe)
+        if (nzchar(cand) && file.exists(cand)) {
+          exe_path <- normalizePath(cand, winslash = "/", mustWork = FALSE)
+        }
+      }
+    }
+    if (is.null(exe_path)) {
+      env_val <- Sys.getenv("DSSAT_EXE", unset = "")
+      if (nzchar(env_val) && file.exists(env_val)) {
+        exe_path <- normalizePath(env_val, winslash = "/", mustWork = FALSE)
+      }
+    }
+  }
+  if (is.null(exe_path) || !file.exists(exe_path)) {
+    stop(sprintf("DSSAT executable not found: %s", exe), call. = FALSE)
   }
 
   args <- c(run_mode_flag, arg)

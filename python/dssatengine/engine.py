@@ -610,10 +610,29 @@ def run_dssat(run_dir: str, exe: str, run_mode_flag: str = "A",
         arg = "DSSBatch.V48"
     else:
         arg = filex if filex else "DSSBatch.V48"
-    exe_path = shutil.which(exe) if not os.path.isabs(exe) else exe
-    exe_path = exe_path or exe
-    if os.path.isabs(exe_path) and not os.path.exists(exe_path):
-        raise FileNotFoundError(f"DSSAT executable not found: {exe_path}")
+    exe_path = None
+    try:
+        from dssatutils.discovery import find_dssat
+        exe_path = find_dssat(exe)
+    except (ImportError, OSError):
+        pass
+
+    if not exe_path:
+        if exe:
+            cand = shutil.which(exe) if not os.path.isabs(exe) else exe
+            if cand and os.path.exists(cand):
+                exe_path = os.path.abspath(cand)
+            elif sys.platform == "win32" and not str(exe).lower().endswith(".exe"):
+                cand_exe = shutil.which(f"{exe}.exe")
+                if cand_exe and os.path.exists(cand_exe):
+                    exe_path = os.path.abspath(cand_exe)
+        if not exe_path:
+            env_val = os.environ.get("DSSAT_EXE", "").strip()
+            if env_val and os.path.exists(env_val):
+                exe_path = os.path.abspath(env_val)
+
+    if not exe_path or not os.path.exists(exe_path):
+        raise FileNotFoundError(f"DSSAT executable not found: {exe}")
 
     cmd = [exe_path, run_mode_flag, arg]
     if model:
