@@ -63,22 +63,33 @@ def yyddd_to_date(code) -> pd.Timestamp:
     Returns ``NaT`` for missing / unparseable / out-of-range codes.
     """
     try:
-        s = str(int(float(code))).strip()
-    except (ValueError, TypeError):
+        f = float(code)
+        if not np.isfinite(f) or f <= 0:
+            return pd.NaT
+        s = str(int(f)).strip()
+    except (ValueError, TypeError, OverflowError):
         return pd.NaT
     if s in ("", "-99", "0"):
         return pd.NaT
-    if len(s) <= 5:                      # YYDDD
-        s = s.zfill(5)
-        yy, doy = int(s[:2]), int(s[2:])
-        year = 2000 + yy if yy < 80 else 1900 + yy
-    else:                                # YYYYDDD
-        s = s.zfill(7)
-        year, doy = int(s[:4]), int(s[4:])
-    max_doy = 366 if pd.Timestamp(year=year, month=12, day=31).dayofyear == 366 else 365
-    if doy < 1 or doy > max_doy:
+    try:
+        if len(s) <= 5:                      # YYDDD
+            s = s.zfill(5)
+            yy, doy = int(s[:2]), int(s[2:])
+            year = 2000 + yy if yy < 80 else 1900 + yy
+        elif len(s) <= 7:                    # YYYYDDD
+            s = s.zfill(7)
+            year, doy = int(s[:4]), int(s[4:])
+        else:
+            return pd.NaT
+        if not (1 <= year <= 9999):
+            return pd.NaT
+        leap = (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0)
+        max_doy = 366 if leap else 365
+        if doy < 1 or doy > max_doy:
+            return pd.NaT
+        return pd.Timestamp(year=year, month=1, day=1) + pd.Timedelta(days=doy - 1)
+    except Exception:
         return pd.NaT
-    return pd.Timestamp(year=year, month=1, day=1) + pd.Timedelta(days=doy - 1)
 
 
 def _to_numeric(df: pd.DataFrame, columns=None) -> pd.DataFrame:
@@ -89,10 +100,12 @@ def _to_numeric(df: pd.DataFrame, columns=None) -> pd.DataFrame:
     out = df.copy()
     cols = columns if columns is not None else out.columns
     for c in cols:
-        coerced = pd.to_numeric(out[c], errors="coerce")
+        col_s = out[c].astype(str).str.strip()
+        is_overflow = col_s.str.match(r"^\*+$").fillna(False)
+        coerced = pd.to_numeric(out[c].mask(is_overflow), errors="coerce")
         # Only replace the column if it is meaningfully numeric (avoid nuking a
         # genuine text column whose every value coerces to NaN).
-        if coerced.notna().any() or out[c].isna().all():
+        if coerced.notna().any() or is_overflow.any() or out[c].isna().all():
             out[c] = coerced.mask(np.isclose(coerced, MISSING))
     return out
 
@@ -100,12 +113,25 @@ def _to_numeric(df: pd.DataFrame, columns=None) -> pd.DataFrame:
 def _add_date_from_year_doy(df: pd.DataFrame) -> pd.DataFrame:
     """Add a ``date`` column derived from YEAR + DOY when both are present."""
     if {"YEAR", "DOY"}.issubset(df.columns):
-        yr = pd.to_numeric(df["YEAR"], errors="coerce").astype("Int64")
-        doy = pd.to_numeric(df["DOY"], errors="coerce").astype("Int64")
-        df["date"] = pd.to_datetime(
-            yr.astype("string") + "-" + doy.astype("string"),
-            format="%Y-%j", errors="coerce",
+        yr = pd.to_numeric(df["YEAR"], errors="coerce")
+        doy = pd.to_numeric(df["DOY"], errors="coerce")
+        leap = ((yr % 4 == 0) & (yr % 100 != 0)) | (yr % 400 == 0)
+        max_doy = np.where(leap, 366, 365)
+        valid = (
+            yr.notna() & doy.notna() &
+            (yr == yr.round()) & (doy == doy.round()) &
+            (yr >= 1) & (yr <= 9999) &
+            (doy >= 1) & (doy <= max_doy)
         )
+        date_series = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
+        if valid.any():
+            v_yr = yr[valid].astype(int)
+            v_doy = doy[valid].astype(int)
+            date_series.loc[valid] = pd.to_datetime(
+                v_yr.astype(str) + "-" + v_doy.astype(str),
+                format="%Y-%j", errors="coerce",
+            )
+        df["date"] = date_series
     return df
 
 
@@ -225,10 +251,12 @@ def parse_timeseries(path: PathLike, add_date: bool = True) -> pd.DataFrame:
     for rotation, (run_no, meta, header, rows) in enumerate(_iter_run_blocks(lines), start=1):
         df = pd.DataFrame(rows, columns=header)
         df = _to_numeric(df)
-        df["run"] = run_no
-        df["treatment"] = meta["treatment"] if meta["treatment"] is not None else run_no
-        df["crop_model"] = meta["crop_model"]
-        df["rotation"] = rotation
+        df = df.assign(
+            run=run_no,
+            treatment=meta["treatment"] if meta["treatment"] is not None else run_no,
+            crop_model=meta["crop_model"],
+            rotation=rotation,
+        )
         frames.append(df)
 
     if not frames:
@@ -381,13 +409,22 @@ def parse_csv(path: PathLike, add_date: bool = True) -> pd.DataFrame:
     p = Path(path)
     if not p.exists():
         return pd.DataFrame()
+    text_cols = {"CR", "MODEL", "EXNAME", "TNAM", "FNAM", "WSTA", "SOIL_ID"}
     try:
-        df = pd.read_csv(p, index_col=False, encoding="utf-8")
+        df = pd.read_csv(
+            p,
+            index_col=False,
+            encoding="utf-8",
+            dtype={c: str for c in text_cols},
+        )
     except Exception:
         return pd.DataFrame()
     if df.empty:
         return df
-    df = df.mask(df.apply(pd.to_numeric, errors="coerce").apply(lambda s: np.isclose(s, MISSING)))
+    num_cols = [c for c in df.columns if c not in text_cols]
+    df = _to_numeric(df, columns=num_cols)
+    for c in text_cols & set(df.columns):
+        df[c] = df[c].astype("string").str.strip()
     if add_date:
         df = _add_date_from_year_doy(df)
         date_cols = {

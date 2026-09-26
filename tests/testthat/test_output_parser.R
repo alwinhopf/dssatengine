@@ -28,7 +28,27 @@ test_that("yyddd_to_date handles YYYYDDD, YYDDD, and missing", {
   expect_equal(yyddd_to_date(98001), as.Date("1998-01-01"))
   expect_true(is.na(yyddd_to_date(-99)))
   expect_true(is.na(yyddd_to_date(0)))
+  expect_true(is.na(yyddd_to_date(-5)))
+  expect_true(is.na(yyddd_to_date(-100)))
   expect_true(is.na(yyddd_to_date(2024400)))
+  expect_true(is.na(yyddd_to_date(2023366)))
+  expect_true(is.na(yyddd_to_date(10000100)))
+})
+
+test_that(".add_date_from_year_doy validates bounds and leap years", {
+  df <- data.frame(
+    YEAR = c(2021, 2020, 2021, 2021, 0, -5, 10000, NA),
+    DOY = c(366, 366, 0, 400, 100, 100, 100, 100)
+  )
+  res <- .add_date_from_year_doy(df)
+  expect_true(is.na(res$date[1]))  # non-leap year day 366
+  expect_equal(res$date[2], as.Date("2020-12-31"))  # leap year day 366
+  expect_true(is.na(res$date[3]))  # DOY 0
+  expect_true(is.na(res$date[4]))  # DOY 400
+  expect_true(is.na(res$date[5]))  # year 0
+  expect_true(is.na(res$date[6]))  # negative year
+  expect_true(is.na(res$date[7]))  # year 10000
+  expect_true(is.na(res$date[8]))  # missing year
 })
 
 test_that("parse_plantgro reads the wheat growth file", {
@@ -162,4 +182,14 @@ test_that("missing and non-tabular files return empty", {
   expect_equal(nrow(parse_timeseries(file.path(FIX, "NOPE.OUT"))), 0)
   expect_equal(nrow(parse_summary(file.path(FIX, "nope.OUT"))), 0)
   expect_equal(nrow(parse_timeseries(file.path(FIX, "SoilNiBal.OUT"))), 0)
+})
+
+test_that("parse_csv and to_numeric convert asterisks and -99 to NA and keep numeric type", {
+  tf <- tempfile(fileext = ".csv")
+  writeLines(c("RUN,VAL,OVERFLOW", "1,10.5,*****", "2,-99.0,*****"), tf)
+  df <- parse_csv(tf, add_date = FALSE)
+  expect_equal(df$RUN, c(1, 2))
+  expect_equal(df$VAL, c(10.5, NA_real_))
+  expect_true(is.numeric(df$OVERFLOW))
+  expect_true(all(is.na(df$OVERFLOW)))
 })

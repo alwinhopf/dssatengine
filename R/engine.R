@@ -727,6 +727,11 @@ run_simulation <- function(ID,
     message(line)  # still emit for interactive / sequential runs
   }
 
+  # Invalidate completion before setup; a failed rerun must not look successful.
+  result_path <- paste0("results_", ID, ".csv")
+  if (file.exists(result_path) && !file.remove(result_path)) {
+    stop("Could not invalidate prior result: ", result_path)
+  }
   trt_vec <- normalize_treatment_list(treatment_start, treatment_end, treatment_list, treatments)
 
   experiment_file <- resolve_point_filex(
@@ -737,33 +742,173 @@ run_simulation <- function(ID,
     point_id = character(), run_number = numeric(), treatment = numeric(), crop_code = character(),
     latitude = numeric(), longitude = numeric(), weather_station_id = character(), soil_profile_id = character(),
     dssat_file_id = character(), dssat_description = character(), planting_date = numeric(), emergence_date = numeric(),
-    harvest_date = numeric(), year_planting = numeric(), year_harvest = numeric(), top_weight_kg_ha = numeric(),
-    final_grain_kg_ha = numeric(), removed_residue_kg_ha = numeric(), soil_organic_carbon_start_kg_C_ha = numeric(),
-    soil_organic_carbon_end_kg_C_ha = numeric(), soil_organic_carbon_delta_kg_C_ha = numeric(),
-    final_irrigation_applications_count = numeric(), final_irrigation_amount_mm = numeric(),       
-    inorganic_n_applied_count = numeric(), inorganic_n_applied_kg_ha = numeric(), nitrate_leaching_kg_ha = numeric(),
-    cumulative_net_co2_emissions_kg_CO2_ha = numeric(), cumulative_n2o_emissions_kg_N_ha = numeric(),
+    anthesis_date = numeric(), maturity_date = numeric(), harvest_date = numeric(),
+    year_planting = integer(), year_harvest = numeric(), top_weight_kg_ha = numeric(),
+    final_grain_kg_ha = numeric(), pod_weight_kg_ha = numeric(), seed_weight_kg = numeric(),
+    harvest_index = numeric(), maximum_lai = numeric(), removed_residue_kg_ha = numeric(),
+    soil_organic_carbon_start_kg_C_ha = numeric(), soil_organic_carbon_end_kg_C_ha = numeric(),
+    soil_organic_carbon_delta_kg_C_ha = numeric(), final_irrigation_applications_count = numeric(),
+    final_irrigation_amount_mm = numeric(), inorganic_n_applied_count = numeric(),
+    inorganic_n_applied_kg_ha = numeric(), nitrate_leaching_kg_ha = numeric(),
+    cumulative_net_co2_emissions_kg_CO2_ha = numeric(), dssat_co2em_kg_C_ha = numeric(),
+    output_metric_schema = integer(), flux_period_basis = character(),
+    soc_delta_period_basis = character(), cumulative_n2o_emissions_kg_N_ha = numeric(),
     stringsAsFactors = FALSE
   )
   results <- results_template
   
-  read_supp_file <- function(fname) {
-    if (file.exists(fname)) {
-      d <- try(suppressWarnings(readr::read_csv(fname, show_col_types = FALSE,
-                                                locale = readr::locale(encoding = "UTF-8"))),
-               silent = TRUE)
-      if (inherits(d, "try-error") || is.null(d) || nrow(d) == 0) return(NULL)
-      return(d)
+  coerce_dssat_csv <- function(d) {
+    if (is.null(d) || nrow(d) == 0) return(d)
+    text_cols <- c("CR", "MODEL", "EXNAME", "TNAM", "FNAM", "WSTA", "SOIL_ID")
+    num_cols <- setdiff(names(d), text_cols)
+    for (col in num_cols) {
+      col_s <- trimws(as.character(d[[col]]))
+      is_overflow <- grepl("^\\*+$", col_s)
+      vals <- d[[col]]
+      if (any(is_overflow)) vals[is_overflow] <- NA
+      coerced <- suppressWarnings(as.numeric(vals))
+      if (any(!is.na(coerced)) || any(is_overflow) || all(is.na(d[[col]]))) {
+        coerced[!is.na(coerced) & abs(coerced - -99.0) < 1e-6] <- NA
+        d[[col]] <- coerced
+      }
     }
-    return(NULL)
+    for (c in intersect(text_cols, names(d))) d[[c]] <- trimws(as.character(d[[c]]))
+    d
+  }
+
+  read_supp_file <- function(fname) {
+    if (!file.exists(fname)) return(NULL)
+    d <- tryCatch({
+      lines <- readLines(fname, n = 1, warn = FALSE)
+      if (length(lines) == 0 || !nzchar(lines[1])) return(NULL)
+      hdr <- trimws(strsplit(lines[1], ",")[[1]])
+      text_cols <- c("CR", "MODEL", "EXNAME", "TNAM", "FNAM", "WSTA", "SOIL_ID")
+      ct <- list()
+      for (tc in intersect(text_cols, hdr)) ct[[tc]] <- readr::col_character()
+      col_spec <- do.call(readr::cols, c(ct, list(.default = readr::col_guess())))
+      suppressWarnings(readr::read_csv(fname, show_col_types = FALSE,
+                                       col_types = col_spec,
+                                       locale = readr::locale(encoding = "UTF-8")))
+    }, error = function(e) NULL)
+    if (is.null(d) || nrow(d) == 0) return(NULL)
+    coerce_dssat_csv(d)
   }
   
+  clean_prior_outputs <- function() {
+    for (f in c("summary.csv", "soilorg.csv", "soilni.csv", "soilwat.csv", "plantgro.csv")) {
+      if (file.exists(f) && !file.remove(f)) stop("Could not remove stale output: ", f)
+    }
+  }
+
+  build_run_results <- function(summary_df, fallback_trt = NULL) {
+    if (is.null(summary_df) || nrow(summary_df) == 0) return(NULL)
+    master_runs <- dplyr::tibble(RUNNO = summary_df$RUNNO)
+
+    soil_org <- read_supp_file('soilorg.csv')
+    if (!is.null(soil_org) && all(c("RUN", "SOMCT") %in% names(soil_org))) {
+      soil_org_sum <- soil_org %>%
+        dplyr::group_by(RUN) %>%
+        dplyr::summarise(SOMCT_start = head(SOMCT, 1), SOMCT_end = tail(SOMCT, 1)) %>%
+        dplyr::rename(RUNNO = RUN)
+      soil_organic_summarized <- dplyr::left_join(master_runs, soil_org_sum, by = "RUNNO")
+    } else {
+      soil_organic_summarized <- master_runs %>% dplyr::mutate(SOMCT_start = NA_real_, SOMCT_end = NA_real_)
+    }
+
+    soil_ni <- read_supp_file('soilni.csv')
+    if (!is.null(soil_ni) && "RUN" %in% names(soil_ni)) {
+      sn_group <- soil_ni %>% dplyr::group_by(RUN)
+      has_napc <- "NAPC" %in% names(soil_ni)
+      has_nlcc <- "NLCC" %in% names(soil_ni)
+      has_nim  <- "NI#M" %in% names(soil_ni)
+      soil_ni_sum <- sn_group %>% dplyr::summarise(
+        NAPC = if (has_napc) tail(NAPC, 1) else NA_real_,
+        NLCC = if (has_nlcc) tail(NLCC, 1) else NA_real_,
+        `NI#M` = if (has_nim) tail(`NI#M`, 1) else NA_real_
+      ) %>% dplyr::rename(RUNNO = RUN)
+      soilnitrogen_summarized <- dplyr::left_join(master_runs, soil_ni_sum, by = "RUNNO")
+    } else {
+      soilnitrogen_summarized <- master_runs %>% dplyr::mutate(NAPC = NA_real_, NLCC = NA_real_, `NI#M` = NA_real_)
+    }
+
+    soil_wat <- read_supp_file('soilwat.csv')
+    if (!is.null(soil_wat) && "RUN" %in% names(soil_wat)) {
+      sw_group <- soil_wat %>% dplyr::group_by(RUN)
+      has_irc  <- "IR#C" %in% names(soil_wat)
+      has_irrc <- "IRRC" %in% names(soil_wat)
+      soil_wat_sum <- sw_group %>% dplyr::summarise(
+        `IR#C` = if (has_irc) tail(`IR#C`, 1) else NA_real_,
+        IRRC   = if (has_irrc) tail(IRRC, 1) else NA_real_
+      ) %>% dplyr::rename(RUNNO = RUN)
+      irrigation_summarized <- dplyr::left_join(master_runs, soil_wat_sum, by = "RUNNO")
+    } else {
+      irrigation_summarized <- master_runs %>% dplyr::mutate(`IR#C` = NA_real_, IRRC = NA_real_)
+    }
+
+    trt_col <- if ("TRNO" %in% names(summary_df) && !all(is.na(summary_df$TRNO))) {
+      summary_df$TRNO
+    } else if (!is.null(fallback_trt)) {
+      rep(fallback_trt, nrow(summary_df))
+    } else {
+      summary_df$RUNNO
+    }
+
+    get_sum_col <- function(col, default = NA) {
+      if (col %in% names(summary_df)) summary_df[[col]] else rep(default, nrow(summary_df))
+    }
+
+    raw_co2em <- suppressWarnings(as.numeric(get_sum_col("CO2EM", NA_real_)))
+
+    data.frame(
+      point_id = ID,
+      run_number = summary_df$RUNNO,
+      treatment = trt_col,
+      crop_code = get_sum_col("CR", NA_character_),
+      latitude = get_sum_col("LAT", NA_real_),
+      longitude = get_sum_col("LONG", NA_real_),
+      weather_station_id = get_sum_col("WSTA", NA_character_),
+      soil_profile_id = get_sum_col("SOIL_ID", NA_character_),
+      dssat_file_id = get_sum_col("EXNAME", NA_character_),
+      dssat_description = get_sum_col("TNAM", NA_character_),
+      planting_date = get_sum_col("PDAT", NA_real_),
+      emergence_date = get_sum_col("EDAT", NA_real_),
+      anthesis_date = get_sum_col("ADAT", NA_real_),
+      maturity_date = get_sum_col("MDAT", NA_real_),
+      harvest_date = get_sum_col("HDAT", NA_real_),
+      year_planting = as.integer(get_sum_col("PYEAR", NA_integer_)),
+      year_harvest = get_sum_col("HYEAR", NA_real_),
+      top_weight_kg_ha = get_sum_col("CWAM", NA_real_),
+      final_grain_kg_ha = get_sum_col("HWAM", NA_real_),
+      pod_weight_kg_ha = get_sum_col("PWAM", NA_real_),
+      seed_weight_kg = get_sum_col("HWUM", NA_real_),
+      harvest_index = get_sum_col("HIAM", NA_real_),
+      maximum_lai = get_sum_col("LAIX", NA_real_),
+      removed_residue_kg_ha = get_sum_col("BWAH", NA_real_),
+      soil_organic_carbon_start_kg_C_ha = soil_organic_summarized$SOMCT_start,
+      soil_organic_carbon_end_kg_C_ha = soil_organic_summarized$SOMCT_end,
+      soil_organic_carbon_delta_kg_C_ha = soil_organic_summarized$SOMCT_end - soil_organic_summarized$SOMCT_start,
+      final_irrigation_applications_count = irrigation_summarized$`IR#C`,
+      final_irrigation_amount_mm = irrigation_summarized$IRRC,
+      inorganic_n_applied_count = soilnitrogen_summarized$`NI#M`,
+      inorganic_n_applied_kg_ha = soilnitrogen_summarized$NAPC,
+      nitrate_leaching_kg_ha = soilnitrogen_summarized$NLCC,
+      cumulative_net_co2_emissions_kg_CO2_ha = raw_co2em * (44 / 12),
+      dssat_co2em_kg_C_ha = raw_co2em,
+      output_metric_schema = rep(2L, nrow(summary_df)),
+      flux_period_basis = rep("DSSAT_season_not_calendar_year", nrow(summary_df)),
+      soc_delta_period_basis = rep("first_to_last_recorded_soilorg_row", nrow(summary_df)),
+      cumulative_n2o_emissions_kg_N_ha = get_sum_col("N2OEM", NA_real_),
+      stringsAsFactors = FALSE
+    )
+  }
+
   tryCatch({
     
     # MODE A: EXPERIMENT 
     if (run_mode == "experiment") {
       batch_file_path <- file.path(getwd(), 'DSSBatch.V48')
       write_dssbatch(experiment_file, trt_vec, batch_file_path, run_mode = "experiment")
+      clean_prior_outputs()
       run_dssat(".", dssat_exe_path, "B", timeout = timeout)
 
       if (!file.exists('summary.csv')) {
@@ -774,119 +919,36 @@ run_simulation <- function(ID,
              "Also check ERROR.OUT, WARNING.OUT, INFO.OUT, and dssat_B_stdout_stderr.log in this folder.",
              call. = FALSE)
       }
-      summary <- suppressWarnings(readr::read_csv('summary.csv', show_col_types = FALSE,
-                                                  locale = readr::locale(encoding = "UTF-8")))
-      
+      summary <- read_supp_file('summary.csv')
       if (is.null(summary) || nrow(summary) == 0) {
         stop("DSSAT produced an empty summary.csv; no result rows can be inferred.", call. = FALSE)
       } else {
         summary$PYEAR <- substr(summary$PDAT, 1, 4)
       }
       
-      master_runs <- dplyr::tibble(RUNNO = summary$RUNNO)
-      soil_org <- read_supp_file('soilorg.csv')
-      if (!is.null(soil_org)) {
-        soil_org_sum <- soil_org %>% dplyr::group_by(RUN) %>% dplyr::summarise(SOMCT_start = head(SOMCT, 1), SOMCT_end = tail(SOMCT, 1)) %>% dplyr::rename(RUNNO = RUN)
-        soil_organic_summarized <- dplyr::left_join(master_runs, soil_org_sum, by = "RUNNO")
-      } else { soil_organic_summarized <- master_runs %>% dplyr::mutate(SOMCT_start=NA, SOMCT_end=NA) }
-      
-      soil_ni <- read_supp_file('soilni.csv')
-      if (!is.null(soil_ni)) {
-        soil_ni_sum <- soil_ni %>% dplyr::group_by(RUN) %>% dplyr::summarise(NAPC = tail(NAPC, 1), NLCC = tail(NLCC, 1), `NI#M` = tail(`NI#M`,1)) %>% dplyr::rename(RUNNO = RUN)
-        soilnitrogen_summarized <- dplyr::left_join(master_runs, soil_ni_sum, by = "RUNNO")
-      } else { soilnitrogen_summarized <- master_runs %>% dplyr::mutate(NAPC=NA, NLCC=NA, `NI#M`=NA) }
-      
-      soil_wat <- read_supp_file('soilwat.csv')
-      if (!is.null(soil_wat)) {
-        soil_wat_sum <- soil_wat %>% dplyr::group_by(RUN) %>% dplyr::summarise(`IR#C` = tail(`IR#C`, 1), IRRC = tail(IRRC, 1)) %>% dplyr::rename(RUNNO = RUN)
-        irrigation_summarized <- dplyr::left_join(master_runs, soil_wat_sum, by = "RUNNO")
-      } else { irrigation_summarized <- master_runs %>% dplyr::mutate(`IR#C`=NA, IRRC=NA) }
-      
-      run_results <- data.frame(
-        point_id = ID, run_number = summary$RUNNO, treatment = summary$TRNO, crop_code = summary$CR,
-        latitude = summary$LAT, longitude = summary$LONG, weather_station_id = summary$WSTA,
-        soil_profile_id = summary$SOIL_ID, dssat_file_id = summary$EXNAME, dssat_description = summary$TNAM,
-        planting_date = summary$PDAT, emergence_date = summary$EDAT,
-        anthesis_date = summary$ADAT, maturity_date = summary$MDAT, harvest_date = summary$HDAT,
-        year_planting = as.integer(summary$PYEAR), year_harvest = summary$HYEAR, top_weight_kg_ha = summary$CWAM,
-        final_grain_kg_ha = summary$HWAM, pod_weight_kg_ha = summary$PWAM,
-        seed_weight_kg = summary$HWUM, harvest_index = summary$HIAM, maximum_lai = summary$LAIX,
-        removed_residue_kg_ha = summary$BWAH,
-        soil_organic_carbon_start_kg_C_ha = soil_organic_summarized$SOMCT_start,
-        soil_organic_carbon_end_kg_C_ha = soil_organic_summarized$SOMCT_end,
-        soil_organic_carbon_delta_kg_C_ha = soil_organic_summarized$SOMCT_end - soil_organic_summarized$SOMCT_start,
-        final_irrigation_applications_count = irrigation_summarized$`IR#C`, final_irrigation_amount_mm= irrigation_summarized$IRRC,
-        inorganic_n_applied_count = soilnitrogen_summarized$`NI#M`, inorganic_n_applied_kg_ha = soilnitrogen_summarized$NAPC,
-        nitrate_leaching_kg_ha = soilnitrogen_summarized$NLCC, cumulative_net_co2_emissions_kg_CO2_ha = summary$CO2EM,
-        cumulative_n2o_emissions_kg_N_ha = summary$N2OEM
-      )
-      results <- rbind(results, run_results)
+      run_results <- build_run_results(summary)
+      if (!is.null(run_results)) results <- rbind(results, run_results)
       
       # MODE B: SEQUENCE 
     } else if (run_mode == "sequence") {
       for (trt in trt_vec) {
         batch_file_path <- file.path(getwd(), 'DSSBatch.V48')
         write_dssbatch_sequence(experiment_file, trt, sequence_start, sequence_end, batch_file_path)
+        clean_prior_outputs()
         run_dssat(".", dssat_exe_path, "Q", timeout = timeout)
         if (!file.exists('summary.csv')) {
           stop(sprintf("trt %d: DSSAT produced no summary.csv", trt), call. = FALSE)
         }
-        summary <- suppressWarnings(readr::read_csv('summary.csv', show_col_types = FALSE,
-                                                    locale = readr::locale(encoding = "UTF-8")))
-
+        summary <- read_supp_file('summary.csv')
         if (!is.null(summary) && nrow(summary) > 0) {
           summary$PYEAR <- substr(summary$PDAT, 1, 4)
-          master_runs <- dplyr::tibble(RUNNO = summary$RUNNO)
-
-          soil_org <- read_supp_file('soilorg.csv')
-          if (!is.null(soil_org)) {
-            soil_org_sum <- soil_org %>% dplyr::group_by(RUN) %>% dplyr::summarise(SOMCT_start = head(SOMCT, 1), SOMCT_end = tail(SOMCT, 1)) %>% dplyr::rename(RUNNO = RUN)
-            soil_organic_summarized <- dplyr::left_join(master_runs, soil_org_sum, by = "RUNNO")
-          } else { soil_organic_summarized <- master_runs %>% dplyr::mutate(SOMCT_start=NA, SOMCT_end=NA) }
-
-          soil_ni <- read_supp_file('soilni.csv')
-          if (!is.null(soil_ni)) {
-            soil_ni_sum <- soil_ni %>% dplyr::group_by(RUN) %>% dplyr::summarise(NAPC = tail(NAPC, 1), NLCC = tail(NLCC, 1), `NI#M` = tail(`NI#M`,1)) %>% dplyr::rename(RUNNO = RUN)
-            soilnitrogen_summarized <- dplyr::left_join(master_runs, soil_ni_sum, by = "RUNNO")
-          } else { soilnitrogen_summarized <- master_runs %>% dplyr::mutate(NAPC=NA, NLCC=NA, `NI#M`=NA) }
-
-          soil_wat <- read_supp_file('soilwat.csv')
-          if (!is.null(soil_wat)) {
-            soil_wat_sum <- soil_wat %>% dplyr::group_by(RUN) %>% dplyr::summarise(`IR#C` = tail(`IR#C`, 1), IRRC = tail(IRRC, 1)) %>% dplyr::rename(RUNNO = RUN)
-            irrigation_summarized <- dplyr::left_join(master_runs, soil_wat_sum, by = "RUNNO")
-          } else { irrigation_summarized <- master_runs %>% dplyr::mutate(`IR#C`=NA, IRRC=NA) }
-
-          seq_results <- data.frame(
-            point_id = ID, run_number = summary$RUNNO, treatment = summary$TRNO, crop_code = summary$CR,
-            latitude = summary$LAT, longitude = summary$LONG, weather_station_id = summary$WSTA,
-            soil_profile_id = summary$SOIL_ID, dssat_file_id = summary$EXNAME, dssat_description = summary$TNAM,
-            planting_date = summary$PDAT, emergence_date = summary$EDAT,
-            anthesis_date = summary$ADAT, maturity_date = summary$MDAT, harvest_date = summary$HDAT,
-            year_planting = as.integer(summary$PYEAR), year_harvest = summary$HYEAR, top_weight_kg_ha = summary$CWAM,
-            final_grain_kg_ha = summary$HWAM, pod_weight_kg_ha = summary$PWAM,
-            seed_weight_kg = summary$HWUM, harvest_index = summary$HIAM, maximum_lai = summary$LAIX,
-            removed_residue_kg_ha = summary$BWAH,
-            soil_organic_carbon_start_kg_C_ha = soil_organic_summarized$SOMCT_start,
-            soil_organic_carbon_end_kg_C_ha = soil_organic_summarized$SOMCT_end,
-            soil_organic_carbon_delta_kg_C_ha = soil_organic_summarized$SOMCT_end - soil_organic_summarized$SOMCT_start,
-            final_irrigation_applications_count = irrigation_summarized$`IR#C`, final_irrigation_amount_mm = irrigation_summarized$IRRC,
-            inorganic_n_applied_count = soilnitrogen_summarized$`NI#M`, inorganic_n_applied_kg_ha = soilnitrogen_summarized$NAPC,
-            nitrate_leaching_kg_ha = soilnitrogen_summarized$NLCC, cumulative_net_co2_emissions_kg_CO2_ha = summary$CO2EM,
-            cumulative_n2o_emissions_kg_N_ha = summary$N2OEM
-          )
-          results <- rbind(results, seq_results)
+          seq_results <- build_run_results(summary, fallback_trt = trt)
+          if (!is.null(seq_results)) results <- rbind(results, seq_results)
         }
       } 
     } else {
       stop("run_mode must be either 'experiment' or 'sequence'", call. = FALSE)
     }
-    
-    # CO2EM is kg C/ha (GHG_mod.for); retain raw mass and convert once.
-    results$dssat_co2em_kg_C_ha <- results$cumulative_net_co2_emissions_kg_CO2_ha
-    results$cumulative_net_co2_emissions_kg_CO2_ha <- results$dssat_co2em_kg_C_ha * (44 / 12)
-    results$output_metric_schema <- rep(2L, nrow(results))
-    results$flux_period_basis <- rep("DSSAT_season_not_calendar_year", nrow(results))
-    results$soc_delta_period_basis <- rep("first_to_last_recorded_soilorg_row", nrow(results))
 
     # Coordinate overwrite fallback
     if (!is.null(points_df) && nrow(results) > 0) {
@@ -897,7 +959,12 @@ run_simulation <- function(ID,
       }
     }
     
-    if (nrow(results) > 0) readr::write_csv(results, paste0("results_", ID, ".csv"), na = "")
+    if (nrow(results) > 0) {
+      staged <- tempfile(pattern = ".results-", tmpdir = ".")
+      on.exit(unlink(staged), add = TRUE)
+      readr::write_csv(results, staged, na = "")
+      if (!file.rename(staged, result_path)) stop("Could not publish result: ", result_path)
+    }
 
     # NOTE: run-folder cleanup is intentionally NOT done here. The pipelines
     # build the combined summary CSV by re-reading each point's results_<ID>.csv

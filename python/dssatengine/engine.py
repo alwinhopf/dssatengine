@@ -6,6 +6,7 @@ import math
 import subprocess
 import platform
 import shutil
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -671,11 +672,22 @@ def _read_csv_safe(path: str) -> Optional[pd.DataFrame]:
     if not os.path.exists(path):
         return None
     try:
-        df = pd.read_csv(path, index_col=False, encoding="utf-8")
-        for column in df.columns:
-            numeric = pd.to_numeric(df[column], errors="coerce")
-            if numeric.notna().any() or df[column].isna().all():
+        text_cols = {"CR", "MODEL", "EXNAME", "TNAM", "FNAM", "WSTA", "SOIL_ID"}
+        df = pd.read_csv(
+            path,
+            index_col=False,
+            encoding="utf-8",
+            dtype={c: str for c in text_cols},
+        )
+        num_cols = [c for c in df.columns if c not in text_cols]
+        for column in num_cols:
+            col_s = df[column].astype(str).str.strip()
+            is_overflow = col_s.str.match(r"^\*+$").fillna(False)
+            numeric = pd.to_numeric(df[column].mask(is_overflow), errors="coerce")
+            if numeric.notna().any() or is_overflow.any() or df[column].isna().all():
                 df[column] = numeric.mask(np.isclose(numeric, -99.0))
+        for c in text_cols & set(df.columns):
+            df[c] = df[c].astype(str).str.strip()
         return df if not df.empty else None
     except Exception:
         return None
@@ -686,11 +698,13 @@ def _merge_supplemental(point_dir: str, master_runs: pd.DataFrame) -> pd.DataFra
     # --- soilorg ---
     soilorg = _read_csv_safe(os.path.join(point_dir, "soilorg.csv"))
     if soilorg is not None and "RUN" in soilorg.columns and "SOMCT" in soilorg.columns:
-        so = (soilorg.groupby("RUN")
-                     .agg(SOMCT_start=("SOMCT", "first"),
-                          SOMCT_end=("SOMCT", "last"))
-                     .reset_index()
-                     .rename(columns={"RUN": "RUNNO"}))
+        so_grouped = soilorg.groupby("RUN")["SOMCT"]
+        # Keep endpoints keyed by RUN; nth().values loses that association for
+        # reordered/interleaved runs. Positional access also preserves NaNs.
+        so = so_grouped.agg(
+            SOMCT_start=lambda s: s.iloc[0],
+            SOMCT_end=lambda s: s.iloc[-1],
+        ).reset_index().rename(columns={"RUN": "RUNNO"})
         mr = mr.merge(so, on="RUNNO", how="left")
     else:
         mr["SOMCT_start"] = None
@@ -838,6 +852,10 @@ def _run_simulation(ID: str,
         print(line)
 
     try:
+        # Invalidate completion before even preparing a rerun: setup can fail.
+        out_csv = os.path.join(point_dir, f"results_{ID}.csv")
+        if os.path.exists(out_csv):
+            os.remove(out_csv)
         exp_path = _resolve_point_filex(
             ID, template_file_name, template_file_path, point_dir
         )
@@ -849,15 +867,19 @@ def _run_simulation(ID: str,
         "point_id": [], "run_number": [], "treatment": [], "crop_code": [],
         "latitude": [], "longitude": [], "weather_station_id": [],
         "soil_profile_id": [], "dssat_file_id": [], "dssat_description": [],
-        "planting_date": [], "emergence_date": [], "harvest_date": [],
+        "planting_date": [], "emergence_date": [], "anthesis_date": [],
+        "maturity_date": [], "harvest_date": [],
         "year_planting": [], "year_harvest": [],
-        "top_weight_kg_ha": [], "final_grain_kg_ha": [], "removed_residue_kg_ha": [],
+        "top_weight_kg_ha": [], "final_grain_kg_ha": [], "pod_weight_kg_ha": [],
+        "seed_weight_kg": [], "harvest_index": [], "maximum_lai": [],
+        "removed_residue_kg_ha": [],
         "soil_organic_carbon_start_kg_C_ha": [], "soil_organic_carbon_end_kg_C_ha": [],
         "soil_organic_carbon_delta_kg_C_ha": [],
         "final_irrigation_applications_count": [], "final_irrigation_amount_mm": [],
         "inorganic_n_applied_count": [], "inorganic_n_applied_kg_ha": [],
         "nitrate_leaching_kg_ha": [],
-        "cumulative_net_co2_emissions_kg_CO2_ha": [],
+        "cumulative_net_co2_emissions_kg_CO2_ha": [], "dssat_co2em_kg_C_ha": [],
+        "output_metric_schema": [], "flux_period_basis": [], "soc_delta_period_basis": [],
         "cumulative_n2o_emissions_kg_N_ha": [],
     }
     results = pd.DataFrame(results_template)
@@ -866,6 +888,12 @@ def _run_simulation(ID: str,
         trt_vec = normalize_treatment_list(
             treatment_start, treatment_end, treatment_list, treatments
         )
+
+        def _clean_prior_outputs(folder: str):
+            for fname in ("summary.csv", "soilorg.csv", "soilni.csv", "soilwat.csv", "plantgro.csv"):
+                p = os.path.join(folder, fname)
+                if os.path.exists(p):
+                    os.remove(p)  # A locked stale input must fail the rerun.
 
         # ------------------------------------------------------------------ #
         # EXPERIMENT MODE                                                      #
@@ -877,6 +905,7 @@ def _run_simulation(ID: str,
             # treatment rows written above. Mode A runs the FileX directly and
             # silently executes every treatment, defeating treatment_start /
             # treatment_end / treatment_list selection.
+            _clean_prior_outputs(point_dir)
             run_kwargs = {"timeout": timeout} if timeout is not None else {}
             run_dssat(point_dir, dssat_exe_path, "B", **run_kwargs)
 
@@ -907,6 +936,7 @@ def _run_simulation(ID: str,
                 write_dssbatch_sequence(exp_path, trt,
                                         sequence_start, sequence_end,
                                         batch_path)
+                _clean_prior_outputs(point_dir)
                 run_kwargs = {"timeout": timeout} if timeout is not None else {}
                 run_dssat(point_dir, dssat_exe_path, "Q", **run_kwargs)
 
@@ -940,8 +970,14 @@ def _run_simulation(ID: str,
                 results["longitude"] = float(points_row.get("LONG", np.nan))
             except Exception:
                 pass
-            out_csv = os.path.join(point_dir, f"results_{ID}.csv")
-            results.to_csv(out_csv, index=False, na_rep="", encoding="utf-8")
+            fd, staged = tempfile.mkstemp(prefix=".results-", suffix=".tmp", dir=point_dir)
+            os.close(fd)
+            try:
+                results.to_csv(staged, index=False, na_rep="", encoding="utf-8")
+                os.replace(staged, out_csv)
+            finally:
+                if os.path.exists(staged):
+                    os.remove(staged)
         return results
 
     except Exception as exc:

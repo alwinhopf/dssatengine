@@ -33,16 +33,19 @@ yyddd_to_date <- function(code) {
   one <- function(x) {
     if (is.na(x)) return(as.Date(NA))
     s <- suppressWarnings(as.integer(round(as.numeric(x))))
-    if (is.na(s) || s %in% c(-99L, 0L)) return(as.Date(NA))
-    s <- as.character(abs(s))
+    if (is.na(s) || s <= 0L || s == -99L) return(as.Date(NA))
+    s <- as.character(s)
     if (nchar(s) <= 5) {                       # YYDDD
       s <- formatC(s, width = 5, flag = "0")
       yy <- as.integer(substr(s, 1, 2)); doy <- as.integer(substr(s, 3, 5))
       year <- if (yy < 80) 2000L + yy else 1900L + yy
-    } else {                                   # YYYYDDD
+    } else if (nchar(s) <= 7) {                # YYYYDDD
       s <- formatC(s, width = 7, flag = "0")
       year <- as.integer(substr(s, 1, 4)); doy <- as.integer(substr(s, 5, 7))
+    } else {
+      return(as.Date(NA))
     }
+    if (is.na(year) || year < 1L || year > 9999L) return(as.Date(NA))
     max_doy <- if ((year %% 4L == 0L && year %% 100L != 0L) || year %% 400L == 0L) 366L else 365L
     if (is.na(doy) || doy < 1 || doy > max_doy) return(as.Date(NA))
     as.Date(paste0(year, "-01-01")) + (doy - 1)
@@ -56,8 +59,12 @@ yyddd_to_date <- function(code) {
 .to_numeric <- function(df, columns = NULL) {
   cols <- if (is.null(columns)) names(df) else columns
   for (c in cols) {
-    coerced <- suppressWarnings(as.numeric(df[[c]]))
-    if (any(!is.na(coerced)) || all(is.na(df[[c]]))) {
+    col_s <- trimws(as.character(df[[c]]))
+    is_overflow <- grepl("^\\*+$", col_s)
+    vals <- df[[c]]
+    if (any(is_overflow)) vals[is_overflow] <- NA
+    coerced <- suppressWarnings(as.numeric(vals))
+    if (any(!is.na(coerced)) || any(is_overflow) || all(is.na(df[[c]]))) {
       coerced[!is.na(coerced) & abs(coerced - .DSSAT_MISSING) < 1e-6] <- NA
       df[[c]] <- coerced
     }
@@ -71,7 +78,7 @@ yyddd_to_date <- function(code) {
     doy <- suppressWarnings(as.integer(df$DOY))
     d <- rep(as.Date(NA), nrow(df))
     leap <- (yr %% 4L == 0L & yr %% 100L != 0L) | yr %% 400L == 0L
-    ok <- !is.na(yr) & !is.na(doy) & doy >= 1 & doy <= ifelse(leap, 366L, 365L)
+    ok <- !is.na(yr) & !is.na(doy) & yr >= 1L & yr <= 9999L & doy >= 1L & doy <= ifelse(leap, 366L, 365L)
     d[ok] <- as.Date(paste0(yr[ok], "-01-01")) + (doy[ok] - 1)
     df$date <- d
   }
@@ -303,17 +310,22 @@ parse_csv <- function(path, add_date = TRUE) {
   # hijacks the first column as row names or shifts every header name by one.
   # Strip a single trailing comma from each line first so header and data widths
   # match, then parse from text.
+  text_cols <- c("CR", "MODEL", "EXNAME", "TNAM", "FNAM", "WSTA", "SOIL_ID")
   df <- tryCatch({
     lines <- sub(",[ \t]*$", "", readLines(path, warn = FALSE))
+    if (length(lines) == 0 || !nzchar(lines[1])) return(NULL)
+    hdr <- trimws(strsplit(lines[1], ",")[[1]])
+    classes <- rep(NA_character_, length(hdr))
+    names(classes) <- hdr
+    for (tc in intersect(text_cols, hdr)) classes[tc] <- "character"
     utils::read.csv(text = paste(lines, collapse = "\n"),
+                    colClasses = classes,
                     check.names = FALSE, stringsAsFactors = FALSE)
   }, error = function(e) NULL)
   if (is.null(df) || nrow(df) == 0) return(if (is.null(df)) data.frame() else df)
-  for (c in names(df)) {
-    if (is.numeric(df[[c]])) {
-      v <- df[[c]]; v[!is.na(v) & abs(v - .DSSAT_MISSING) < 1e-6] <- NA; df[[c]] <- v
-    }
-  }
+  num_cols <- setdiff(names(df), text_cols)
+  df <- .to_numeric(df, columns = num_cols)
+  for (c in intersect(text_cols, names(df))) df[[c]] <- trimws(as.character(df[[c]]))
   if (add_date) {
     df <- .add_date_from_year_doy(df)
     for (c in names(df)[grepl("DAT$", names(df)) & !grepl("_date$", names(df))]) {

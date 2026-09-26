@@ -30,13 +30,30 @@ def test_yyddd_to_date(code, expected):
     assert yyddd_to_date(code) == pd.Timestamp(expected)
 
 
-@pytest.mark.parametrize("bad", [-99, 0, "", "abc", None, 2024400])
+@pytest.mark.parametrize("bad", [-99, 0, -5, -100, "", "abc", None, 2024400, 2024000, 10000100])
 def test_yyddd_to_date_missing(bad):
     assert pd.isna(yyddd_to_date(bad))
 
 
 def test_nonleap_day_366_is_invalid():
     assert pd.isna(yyddd_to_date(2023366))
+
+
+def test_add_date_from_year_doy_edge_cases():
+    from dssatengine.output_parser import _add_date_from_year_doy
+    df = pd.DataFrame({
+        "YEAR": [2021, 2020, 2021, 2021, 0, -5, 10000, None],
+        "DOY": [366, 366, 0, 400, 100, 100, 100, 100],
+    })
+    res = _add_date_from_year_doy(df)
+    assert pd.isna(res.loc[0, "date"])  # non-leap year day 366
+    assert res.loc[1, "date"] == pd.Timestamp("2020-12-31")  # leap year day 366
+    assert pd.isna(res.loc[2, "date"])  # DOY 0
+    assert pd.isna(res.loc[3, "date"])  # DOY 400
+    assert pd.isna(res.loc[4, "date"])  # year 0
+    assert pd.isna(res.loc[5, "date"])  # negative year
+    assert pd.isna(res.loc[6, "date"])  # year 10000
+    assert pd.isna(res.loc[7, "date"])  # missing year
 
 
 # --------------------------------------------------------------------------- #
@@ -167,6 +184,19 @@ def test_summary_csv():
     assert "PDAT_date" in df.columns
     # -99 sentinel mapped to NaN (EYLDH is -99 in this wheat run)
     assert df["EYLDH"].isna().all()
+
+
+def test_parse_csv_asterisk_and_missing_coercion(tmp_path):
+    p = tmp_path / "test.csv"
+    p.write_text("RUN,CR,TNAM,VAL,OVERFLOW\n1,MZ,Field 1,10.5,*****\n2,MZ,Field 2,-99.0,*****\n")
+    df = parse_csv(p, add_date=False)
+    assert list(df["RUN"]) == [1, 2]
+    assert list(df["CR"]) == ["MZ", "MZ"]
+    assert list(df["TNAM"]) == ["Field 1", "Field 2"]
+    assert df["VAL"].iloc[0] == 10.5
+    assert pd.isna(df["VAL"].iloc[1])
+    assert pd.api.types.is_float_dtype(df["OVERFLOW"])
+    assert df["OVERFLOW"].isna().all()
 
 
 # --------------------------------------------------------------------------- #
