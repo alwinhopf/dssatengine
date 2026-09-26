@@ -42,7 +42,7 @@ jobs:
         env:
           GITHUB_PAT: ${{ github.token }}
         with:
-          extra-packages: any::testthat, any::pkgload, github::alwinhopf/dssatutils@a4202fbc6377a62b391340c317c92c96d157e031
+          extra-packages: any::testthat, any::pkgload, github::alwinhopf/dssatutils@f728cd810923465360e4730d8893bb566dc0773c
           needs: check
           install-pandoc: false
 
