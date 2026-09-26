@@ -139,3 +139,9 @@ The fast tests cover treatment-list normalization, `DSSBatch.V48` writing, and t
 output parsers — the latter against real DSSAT 4.8 fixtures in `tests/fixtures/` — in
 both languages (R/Python parity per [`CONVENTIONS.md`](CONVENTIONS.md) §3). End-to-end
 runs that spawn `dscsm048` require a DSSAT48 install and live in the consumer pipelines.
+
+## Implementation identity
+
+Python exposes `dssatengine.__version__`, aligned with the R package and Python
+package metadata. Consumers should fingerprint implementation contents as well
+as the version when reusing processed results from development installations.

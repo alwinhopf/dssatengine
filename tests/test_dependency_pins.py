@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-UTILS_REF = "e9c859fa1d915623df23e2eb13084cb085dbfe3e"
+UTILS_REF = "a4202fbc6377a62b391340c317c92c96d157e031"
 
 
 def test_r_dependency_and_ci_use_same_dssatutils_revision():
