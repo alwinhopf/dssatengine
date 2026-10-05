@@ -7,3 +7,9 @@ __pycache__/
 .pytest_cache/
 test-results*.xml
 
+
+fast-tests.log
+test-results.xml
+
+build/
+dist/

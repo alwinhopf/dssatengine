@@ -145,3 +145,29 @@ runs that spawn `dscsm048` require a DSSAT48 install and live in the consumer pi
 Python exposes `dssatengine.__version__`, aligned with the R package and Python
 package metadata. Consumers should fingerprint implementation contents as well
 as the version when reusing processed results from development installations.
+
+## R/Python parity note
+
+The Python-only `process.execute` helper owns RunSpec process sessions, launcher-owned
+cache locks and Windows Jobs for both models. Cropmodel R RunSpec front ends call
+that implementation through Python. Native R calibration adapters use processx
+for tree cleanup; the native DSSAT engine API remains mirrored as documented.
+
+## Local and CI validation lanes
+
+`scripts/pre-push.sh` runs the exact offline Python PR gate and records JUnit
+and a test log. Native R tests run in the separate language-parity lane, with
+logs uploaded on success or failure. Platform and live-provider checks remain
+separate. Workflow actions are revision-pinned; Python 3.11 and R 4.3 are explicit.
+
+Packaging checks build from `python/` in a temporary source tree using the shared
+workspace's `cropmodel_workflows/scripts/check_wheels.py`. Generated `build/lib`
+copies are not an API source and should remain removed from version control;
+the wheel check verifies installed imports from all seven current packages.
+
+On POSIX, the fresh process launcher retains the cache-lock descriptor until the
+model exits, even if the model closes inherited descriptors. A distinct descriptor
+transfer avoids Darwin's same-descriptor close-on-exec behavior. Scheduler death
+therefore cannot release the active task lock before model completion. R RunSpec
+execution receives this fix through its existing Python bridge; native R processx
+execution retains its documented separate implementation.
